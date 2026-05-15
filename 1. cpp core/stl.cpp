@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <vector>
+#include <algorithm>
 using namespace std;
 
 class Helper {
@@ -25,7 +26,9 @@ int main(){
 // obj for the helper class
 Helper h;
 
-// 1. Reading 10 numbers from stdin into a std::vector<int>
+// ---------------------------------------------------------------------------------------------- //
+
+// // 1. Reading 10 numbers from stdin into a std::vector<int>
     vector<int> user_input;
     // get user input 
     for(int i = 0; i<10; i++){
@@ -37,6 +40,15 @@ Helper h;
     cout << "printing the stored vector values that were entrerd by the user" << endl;
     // once done, print the vector
     h.PrintVec(user_input);
-    
+
+// ---------------------------------------------------------------------------------------------- //
+
+// 2. Sorts them descending using std::sort with a lambda comparator
+    cout << "question 2" << endl;
+    sort(user_input.begin(), user_input.end(), [](int a, int b){ return a > b;});
+    h.PrintVec(user_input);
+
+// 
+
     return 0;
 }

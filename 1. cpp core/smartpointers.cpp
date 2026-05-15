@@ -45,7 +45,7 @@ int main() {
 
     cout << "Shared count : " << shPtr1.use_count() << endl;
 
-    // Weak Pointer : will not keep the object alive when it's last owner leave's it's score
+    // Weak Pointer : will not keep the object alive when it's last owner leave's it's scope
     weak_ptr<int> wePtr1;
     {
         shared_ptr<int>shPtr1=make_shared<int>(10);

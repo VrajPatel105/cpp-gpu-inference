@@ -69,6 +69,13 @@ Helper h;
     for(auto &pair : mpp){
         cout << pair.first << " -> " <<  pair.second << endl;
     }
+// ---------------------------------------------------------------------------------------------- //
 
+    // 5. Prints the map using a range-based for loop
+    // we already did that in the above section :) 
+    for(auto &pair : mpp){
+        cout << pair.first << " -> " <<  pair.second << endl;
+    }
+    
     return 0;
 }

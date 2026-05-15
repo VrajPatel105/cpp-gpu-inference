@@ -58,12 +58,77 @@ public:
         strcpy(data,s);
         cout << "Constructed" << endl;
     }
+    // copy constructor
+    MyString(const MyString& other){ // since we s1 is lvalue, we define other as lvalue reference here.
+        data = new char[strlen(other.data) + 1];
+        strcpy(data, other.data);
+        cout << "Copied " << endl;
+    }
 
+    // defining the destructors 
+    ~MyString(){
+        delete[] data;
+        cout << "Destroyed" << endl;
+    }
+
+    // void print(){ cout << data << endl;}
+
+    MyString(MyString&& other){ // this is the entire rvalue object 
+        // && means that it's a rvalue reference -> temporary 
+        data = other.data; // getting the data from s1 to s2 : both pointers are pointing to the same string's array in the memory
+        other.data = nullptr; // pointing the other.data (s1) to null pointer now.
+        // so now we end up with only s2 data in the memory 
+        cout << "Moved" << endl;
+    }
+
+    // updating the print function
+    void print() {
+        if (data){
+            cout << data << endl;
+        }
+        else{
+            cout << "Empty" << endl; // this will only print if the obj is pointing to nullptr
+        }
+    }
 
 };
 
 
 int main(){
+    // MyString s1("Hello");
+    // // copying object
+    // MyString s2 = s1; // here since s1 is lvalue (because we are storing the string in an array) meaning that it has a persistent value
+    
+    // s1.print();
+    // s2.print();
+    // output : 
+    // Constructed
+    // Copied 
+    // Hello
+    // Hello
+    // Destroyed
+    // Destroyed
+    
+    // but here above, we used copy constructor which actually made 2 arrays in the memory
+    // and we do not want that
+    // therefore, we use the move constructor
+    // move constructor -> we want to transfer the ownership from one object to another
+
+    // and in order to do this, we need to tell the compiler that consider s1 should be treated as temporary object
+    // therefore; 
     MyString s1("Hello");
+    MyString s2 = move(s1); // here this means s1 is treated as temporary value 
+    // which means that s1 is a rvalue. and because it's an rvalue, we now need a rvalue reference in the constructor as well
+    s1.print();
+    s2.print();
+
+    // above output : 
+    // Constructed
+    // Moved
+    // Empty
+    // Hello
+    // Destroyed
+    // Destroyed
+
     return 0;
 }

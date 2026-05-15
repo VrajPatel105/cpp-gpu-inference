@@ -8,6 +8,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
 using namespace std;
 
 class Helper {
@@ -48,7 +49,26 @@ Helper h;
     sort(user_input.begin(), user_input.end(), [](int a, int b){ return a > b;});
     h.PrintVec(user_input);
 
-// 
+// ---------------------------------------------------------------------------------------------- //
+
+// 3. Counts how many are even using std::count_if with another lambda
+    cout << "question 3" << endl;
+    int even_num_count = count_if(user_input.begin(), user_input.end(), [](int num){return num % 2 == 0;});
+    printf("Total even number count : %d", even_num_count);
+
+// ---------------------------------------------------------------------------------------------- //
+
+// 4. Stores frequencies in a std::unordered_map<int, int>
+    cout << "question 4" << endl;
+    unordered_map<int,int> mpp;
+    for(auto &it: user_input){
+        mpp[it]++;
+    }
+    cout << "printing the frequencies from the map" << endl;
+    // print the frequencies
+    for(auto &pair : mpp){
+        cout << pair.first << " -> " <<  pair.second << endl;
+    }
 
     return 0;
 }

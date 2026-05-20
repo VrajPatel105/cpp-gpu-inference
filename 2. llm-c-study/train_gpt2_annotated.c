@@ -529,8 +529,7 @@ void crossentropy_softmax_backward(float* dlogits,
 // ----------------------------------------------------------------------------
 // GPT-2 model definition
 
-//
-
+//NOTE : we are defining the struct that will contain all the different variables that we will need on the long run.
 
 typedef struct {
     int max_seq_len; // max sequence length, e.g. 1024
@@ -538,11 +537,11 @@ typedef struct {
     int padded_vocab_size; // padded to e.g. %128==0, 50304
     int num_layers; // number of layers, e.g. 12
     int num_heads; // number of heads in attention, e.g. 12
-    int channels; // number of channels, e.g. 768
+    int channels; // number of channels, e.g. 768 // this is d_model
 } GPT2Config;
 
 // the parameters of the model
-#define NUM_PARAMETER_TENSORS 16
+#define NUM_PARAMETER_TENSORS 16 // NOTE : meaning that we will have a total of 16 parameters that will be defined.
 typedef struct {
     float* wte; // (V, C)
     float* wpe; // (maxT, C)

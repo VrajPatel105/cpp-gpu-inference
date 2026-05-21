@@ -561,6 +561,8 @@ typedef struct {
     float* lnfb; // (C)
 } ParameterTensors;
 
+// Will be exploring parameter struct first
+
 void fill_in_parameter_sizes(size_t* param_sizes, GPT2Config config) {
     size_t Vp = config.padded_vocab_size;
     size_t C = config.channels;

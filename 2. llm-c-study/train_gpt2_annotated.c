@@ -542,23 +542,28 @@ typedef struct {
 
 // the parameters of the model
 #define NUM_PARAMETER_TENSORS 16 // NOTE : meaning that we will have a total of 16 parameters that will be defined.
+// this to keep in mind here : 
+// V -> vocab_size
+// C -> d_model
+// L -> num_layers (number of transformer blocks, 12 for GPT-2 small)
+// maxT -> max_seq_len
 typedef struct {
-    float* wte; // (V, C)
-    float* wpe; // (maxT, C)
-    float* ln1w; // (L, C)
-    float* ln1b; // (L, C)
-    float* qkvw; // (L, 3*C, C)
-    float* qkvb; // (L, 3*C)
-    float* attprojw; // (L, C, C)
-    float* attprojb; // (L, C)
-    float* ln2w; // (L, C)
-    float* ln2b; // (L, C)
-    float* fcw; // (L, 4*C, C)
-    float* fcb; // (L, 4*C)
-    float* fcprojw; // (L, C, 4*C)
-    float* fcprojb; // (L, C)
-    float* lnfw; // (C)
-    float* lnfb; // (C)
+    float* wte; // (V, C) - Weight Token Embeddings : vocab_size, d_model
+    float* wpe; // (maxT, C) - Weight Positional Encoding : max_seq_len, d_model
+    float* ln1w; // (L, C) - Layer Norm 1 Weights 
+    float* ln1b; // (L, C) - Layer Norm 1 Bias
+    float* qkvw; // (L, 3*C, C) - Q, K, V projection weights fused into one matrix per block
+    float* qkvb; // (L, 3*C) - qkv bias tensor - no_of_layer, 3*d_model
+    float* attprojw; // (L, C, C) - Attention Projection Weight Tensor :  no_of_layer, d_model, d_model
+    float* attprojb; // (L, C) - Attention Projection Bias Tensor : no_of_layer, d_model
+    float* ln2w; // (L, C) - Layer Norm 2 Weights
+    float* ln2b; // (L, C) - Layer Norm 2 Bias
+    float* fcw; // (L, 4*C, C) - Feed Forward Weights - no_of_layer, 4*d_model, d_model : FFN expansion: C -> 4C
+    float* fcb; // (L, 4*C) - Feed Forward Bias - no_of_layer, d_model
+    float* fcprojw; // (L, C, 4*C) - Feed Forward Projection Weight - no_of_layer, d_model, 4*d_model : FFN projection back: 4C j -> C
+    float* fcprojb; // (L, C) - Feed Forward Projection Bias - no_of_layer, d_model
+    float* lnfw; // (C) - Linear Norm Final Weight - d_model
+    float* lnfb; // (C) - Linear Norm Final Bias - d_model
 } ParameterTensors;
 
 // Will be exploring parameter struct first

@@ -621,6 +621,7 @@ float* malloc_and_point_parameters(ParameterTensors* params, size_t* param_sizes
         num_parameters += param_sizes[i];
     }
 // output for the above loop
+// params_size[i] : 
 // At i=0 , num_parameters = 0 
 // At i=1 , num_parameters = 38633472 
 // At i=2 , num_parameters = 39419904 
@@ -661,13 +662,33 @@ float* malloc_and_point_parameters(ParameterTensors* params, size_t* param_sizes
         &params->wte, &params->wpe, &params->ln1w, &params->ln1b, &params->qkvw, &params->qkvb,
         &params->attprojw, &params->attprojb, &params->ln2w, &params->ln2b, &params->fcw, &params->fcb,
         &params->fcprojw, &params->fcprojb, &params->lnfw, &params->lnfb
-    };
-    float* params_memory_iterator = params_memory;
+    }; 
+    // this is just a pointer to an array that contains address of the parameters.
+    // the use of '&' signifies that those are addresses of the values 
+    // &params->wpe = 0x1008 (the address of the wpe field)
+    // &params->ln1w = 0x1010
+    // &params->lnfb = 0x1078 and so on.......
+
+    // &x = "give me the address of x"
+    // *p = "give me whatever is stored at address p"
+    // They're inverses. *(&x) is the same as x
+
+    // now assigning those addresses inside the ptrs list the memory
+    float* params_memory_iterator = params_memory; // now params_memory_iterator is also pointing to the same address as params_memory. That address when dereferenced has the actual 124M values
     for (size_t i = 0; i < NUM_PARAMETER_TENSORS; i++) {
-        *(ptrs[i]) = params_memory_iterator;
-        params_memory_iterator += param_sizes[i];
+        *(ptrs[i]) = params_memory_iterator; 
+        // ptrs[i] holds &params->wte (and so on), so dereferencing gives the field itself.
+        // Equivalent to: params->wte = params_memory_iterator (for i=0)
+        params_memory_iterator += param_sizes[i];// advancing the location of the pointer to the next address. This at the end will lead to a memory block that has all those 16 parametesr defined on after another in the memory
     }
-    return params_memory;
+
+    // params_memory ────────────────────────────────► 498 MB ◄───────
+       //           │       │     │      │ ...                       │
+       //           ▼       ▼     ▼      ▼                           ▼
+       //           wte     wpe   ln1w   ln1b   ...                  lnfb
+       //           (38M)   (786K) (9K)   (9K)                        (768)
+    
+    return params_memory;// returning the start address of the memory block. 
 }
 
 #define NUM_ACTIVATION_TENSORS 23

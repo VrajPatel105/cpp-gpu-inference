@@ -593,16 +593,69 @@ void fill_in_parameter_sizes(size_t* param_sizes, GPT2Config config) { // this f
     param_sizes[14] = C; // lnfw -> 768
     param_sizes[15] = C; // lnfb-> 768
     // Total: ~124M parameters. This is why this model is called "GPT-2 124M".
-}
+} // below is the actual assigned array output 
+
+// param_sizes[16] = {
+//     [0] = 38633472,
+//     [1] = 786432,
+//     [2] = 9216,
+//     [3] = 9216,
+//     [4] = 21233664,
+//     [5] = 27648,
+//     [6] = 7077888,
+//     [7] = 9216,
+//     [8] = 9216,
+//     [9] = 9216,
+//     [10] = 28311552,
+//     [11] = 36864,
+//     [12] = 28311552,
+//     [13] = 9216,
+//     [14] = 768,
+//     [15] = 768
+// };
 
 // allocate memory for the parameters and point the individual tensors to the right places
-float* malloc_and_point_parameters(ParameterTensors* params, size_t* param_sizes) {
-    size_t num_parameters = 0;
+float* malloc_and_point_parameters(ParameterTensors* params, size_t* param_sizes) { // here the params is just the struct of points and param_sizes is the array that is show above 
+    size_t num_parameters = 0; // this is used to calculated the total number of parameters
     for (size_t i = 0; i < NUM_PARAMETER_TENSORS; i++) {
         num_parameters += param_sizes[i];
     }
+// output for the above loop
+// At i=0 , num_parameters = 0 
+// At i=1 , num_parameters = 38633472 
+// At i=2 , num_parameters = 39419904 
+// At i=3 , num_parameters = 39429120 
+// At i=4 , num_parameters = 39438336 
+// At i=5 , num_parameters = 60672000 
+// At i=6 , num_parameters = 60699648 
+// At i=7 , num_parameters = 67777536 
+// At i=8 , num_parameters = 67786752 
+// At i=9 , num_parameters = 67795968 
+// At i=10 , num_parameters = 67805184 
+// At i=11 , num_parameters = 96116736 
+// At i=12 , num_parameters = 96153600 
+// At i=13 , num_parameters = 124465152 
+// At i=14 , num_parameters = 124474368 
+// At i=15 , num_parameters = 124475136
+
+// Therefore, the total is 124,475,136 ~ 124M
+
     // malloc all parameters all at once
     float* params_memory = (float*)mallocCheck(num_parameters * sizeof(float));
+
+    // (num_parameters * sizeof(float)) = 124,475,136 * 4 bytes = about 498mb
+                // additional info : 
+                // 1 bit -> just binary 0 or 1
+                // 1 byte -> 8 bits 
+                // 1 KiloByte -> 2^10 bytes
+                // 1 MegaByte -> 2^10 KiloBytes
+
+    // mallocCheck is simply checking if the OS is able to provide the bytes requested (num_parameters * sizeof(float)) and then allocating the memory.
+    // since this is malloc, it will just return us the pointer to that memory block without deleting the garbage values that were there before. 
+    // We are anyways gonna load the weights from disk during checkpoint so we dont care what garbage values are returned cuz we are gonna overwrite it anyways.
+
+    // the (float*) is the typecast. mallocCheck returns a void pointer and by using typecast, we are getting float pointer instead.
+
     // assign all the tensors
     float** ptrs[] = {
         &params->wte, &params->wpe, &params->ln1w, &params->ln1b, &params->qkvw, &params->qkvb,

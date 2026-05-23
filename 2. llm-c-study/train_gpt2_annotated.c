@@ -568,27 +568,31 @@ typedef struct {
 
 // Will be exploring parameter struct first
 
-void fill_in_parameter_sizes(size_t* param_sizes, GPT2Config config) {
-    size_t Vp = config.padded_vocab_size;
-    size_t C = config.channels;
-    size_t maxT = config.max_seq_len;
-    size_t L = config.num_layers;
-    param_sizes[0] = Vp * C; // wte
-    param_sizes[1] = maxT * C; // wpe
-    param_sizes[2] = L * C; // ln1w
-    param_sizes[3] = L * C; // ln1b
-    param_sizes[4] = L * (3 * C) * C; // qkvw
-    param_sizes[5] = L * (3 * C); // qkvb
-    param_sizes[6] = L * C * C; // attprojw
-    param_sizes[7] = L * C; // attprojb
-    param_sizes[8] = L * C; // ln2w
-    param_sizes[9] = L * C; // ln2b
-    param_sizes[10] = L * (4 * C) * C; // fcw
-    param_sizes[11] = L * (4 * C); // fcb
-    param_sizes[12] = L * C * (4 * C); // fcprojw
-    param_sizes[13] = L * C; // fcprojb
-    param_sizes[14] = C; // lnfw
-    param_sizes[15] = C; // lnfb
+// size_t is an unsigned integer type large enough to represent the size of any object in memory. Used for sizes, counts, and indices. Can't be negative.
+// param_sizes[16] is an array that is being passed to size_t* param_sizes
+void fill_in_parameter_sizes(size_t* param_sizes, GPT2Config config) { // this function is called in GPT2_build_model_from_checkpoint function, and it's arguments are paramsize and model->config
+    // we will use the value of gpt2 small model for this entire annotated file ~ Vraj
+    size_t Vp = config.padded_vocab_size; // Vp = 50304 (real vocab is 50257, padded to a multiple of 64 for GPU matmul speed)
+    size_t C = config.channels; // C = 768, remember channels is simply d_model
+    size_t maxT = config.max_seq_len; // maxT = 1024
+    size_t L = config.num_layers; // L = 12
+    param_sizes[0] = Vp * C; // wte -> 50304 * 768 = 38,633,472
+    param_sizes[1] = maxT * C; // wpe -> 1024 * 768 = 786,432
+    param_sizes[2] = L * C; // ln1w -> 12 * 768 = 9,216
+    param_sizes[3] = L * C; // ln1b -> 12 * 768 = 9,216
+    param_sizes[4] = L * (3 * C) * C; // qkvw -> 12 * (3*768) * 768 = 21,233,664
+    param_sizes[5] = L * (3 * C); // qkvb -> 12 * (3*768) = 27,648
+    param_sizes[6] = L * C * C; // attprojw -> 12 * 768 * 768 = 7,077,888
+    param_sizes[7] = L * C; // attprojb -> 12 * 768 = 9,216
+    param_sizes[8] = L * C; // ln2w -> 12 * 768 = 9,216
+    param_sizes[9] = L * C; // ln2b -> 12 * 768 = 9,216
+    param_sizes[10] = L * (4 * C) * C; // fcw -> 12 * (4 * 768) * 768 = 28,311,552
+    param_sizes[11] = L * (4 * C); // fcb -> 12 * (4*768) = 36,864
+    param_sizes[12] = L * C * (4 * C); // fcprojw 12 * 768 * (4*768) = 28,311,552
+    param_sizes[13] = L * C; // fcprojb -> 12 * 768 = 9,216
+    param_sizes[14] = C; // lnfw -> 768
+    param_sizes[15] = C; // lnfb-> 768
+    // Total: ~124M parameters. This is why this model is called "GPT-2 124M".
 }
 
 // allocate memory for the parameters and point the individual tensors to the right places
@@ -694,7 +698,7 @@ typedef struct {
     GPT2Config config;
     // the weights (parameters) of the model, and their sizes
     ParameterTensors params;
-    size_t param_sizes[NUM_PARAMETER_TENSORS];
+    size_t param_sizes[NUM_PARAMETER_TENSORS]; // NUM_PARAMETER_TENSORS = 16, -> size_t param_sizes[16]
     float* params_memory;
     size_t num_parameters;
     // gradients of the weights

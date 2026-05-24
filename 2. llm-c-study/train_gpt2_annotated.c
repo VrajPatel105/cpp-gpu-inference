@@ -189,6 +189,21 @@ void layernorm_backward(float* dinp, float* dweight, float* dbias,
     }
 }
 
+// Symbol legend (used throughout this function below):
+//   b  = batch index (0 to B-1)
+//   t  = time/position index within a sequence (0 to T-1)
+//   o  = output channel index (0 to OC-1)
+//   i  = input channel index (0 to C-1)
+//   bt = flattened (b, t) index = b * T + t, used as a shortcut
+//   val = local accumulator for one output element's dot product
+
+// Dimension legend (the four dimensions this function works with):
+//   B  = batch size, number of sequences processed at once (e.g., 4)
+//   T  = sequence length, number of tokens per sequence (e.g., 64)
+//   C  = input channels, size of each input vector (e.g., 768 = d_model)
+//   OC = output channels, size of each output vector (varies per layer call)
+
+
 void matmul_forward_naive(float* out,
                          const float* inp, const float* weight, const float* bias,
                          int B, int T, int C, int OC) {

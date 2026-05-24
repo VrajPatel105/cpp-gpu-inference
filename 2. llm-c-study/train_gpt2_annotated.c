@@ -210,7 +210,8 @@ void matmul_forward_naive(float* out,
     // the most naive implementation of matrix multiplication
     // this serves as an algorithmic reference, and as a fallback for
     // unfriendly input shapes inside matmul_forward(), below.
-    #pragma omp parallel for collapse(2)
+    #pragma omp parallel for collapse(2) //run the two outer loops (b and t) in parallel across CPU cores." 
+                                        //The collapse(2) means treat the two outer loops as one big loop of B*T iterations and split that across cores.
     for (int b = 0; b < B; b++) {
         for (int t = 0; t < T; t++) {
             int bt = b * T + t;
@@ -224,7 +225,7 @@ void matmul_forward_naive(float* out,
         }
     }
 }
-
+// below is an optimized version of the above naive function.
 void matmul_forward(float* out,
                     const float* inp, const float* weight, const float* bias,
                     int B, int T, int C, int OC) {

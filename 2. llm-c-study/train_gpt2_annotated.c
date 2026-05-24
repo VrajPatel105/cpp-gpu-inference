@@ -38,6 +38,29 @@ There will be other versions of this code that specialize it and make it fast.
 // all the individual layers' forward and backward passes
 // B = batch_size, T = sequence_length, C = channels, V = vocab_size
 
+
+
+
+// encoder_forward: combines token + position embeddings into the model's initial input.
+//
+// For each (b, t) position:
+//   1. Look up the token ID from inp[b, t]
+//   2. Get that token's row from wte (token embedding table)
+//   3. Get position t's row from wpe (position embedding table)
+//   4. Element-wise add the two C-dim vectors, write to out[b, t, :]
+//
+// Reads:  inp (B, T) int token IDs, wte (V, C), wpe (maxT, C)
+// Writes: out (B, T, C) — the "encoded" activation
+// Math:   out[b, t, :] = wte[inp[b, t], :] + wpe[t, :]
+//
+// Index pattern (used in EVERY function in this file):
+//   For tensor shape (D1, D2, D3), element (i1, i2, i3) is at flat offset:
+//   i1 * (D2 * D3) + i2 * D3 + i3
+//   Each index multiplies by the product of all dimensions to its right.
+//
+// Maps to: the bottom of the architecture diagram (Token → Embeddings → + PE).
+// This is the ONLY function that runs before the L=12 decoder blocks.
+
 void encoder_forward(float* out,
                    int* inp, float* wte, float* wpe,
                    int B, int T, int C) {
@@ -45,10 +68,10 @@ void encoder_forward(float* out,
     // inp is (B,T) of integers, holding the token ids at each (b,t) position
     // wte is (V,C) of token embeddings, short for "weight token embeddings"
     // wpe is (maxT,C) of position embeddings, short for "weight positional embedding"
-    for (int b = 0; b < B; b++) {
-        for (int t = 0; t < T; t++) {
+    for (int b = 0; b < B; b++) { // iterating over the batch
+        for (int t = 0; t < T; t++) { // iterating over the sequences inside the respective batch
             // seek to the output position in out[b,t,:]
-            float* out_bt = out + b * T * C + t * C;
+            float* out_bt = out + b * T * C + t * C; // 
             // get the index of the token at inp[b, t]
             int ix = inp[b * T + t];
             // seek to the position in wte corresponding to the token
@@ -786,7 +809,7 @@ float* malloc_and_point_activations(ActivationTensors* acts, size_t* act_sizes) 
 typedef struct {
     GPT2Config config;
     // the weights (parameters) of the model, and their sizes
-    ParameterTensors params;
+    ParameterTensors params; // this and the grads are the same. but defined for seperate tasks
     size_t param_sizes[NUM_PARAMETER_TENSORS]; // NUM_PARAMETER_TENSORS = 16, -> size_t param_sizes[16]
     float* params_memory; // returned from malloc_and_point_parameters function
     size_t num_parameters;

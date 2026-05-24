@@ -313,6 +313,48 @@ void matmul_backward(float* dinp, float* dweight, float* dbias,
     }
 }
 
+
+// attention_forward: multi-head masked self-attention. The only layer that mixes
+// information across time positions. THIS is the function FlashAttention restructures in W12.
+//
+// Legend:
+//   B  = batch size
+//   T  = sequence length
+//   C  = embedding dim (= NH * hs)
+//   NH = number of heads
+//   hs = head size (= C / NH)
+//   C3 = 3*C, width of the fused QKV tensor
+//   b, t, h = batch, query-token, head indices
+//   t2 = key/value token index (the "looked at" position)
+//   i  = within-head index (0 to hs-1)
+//
+// Tensors:
+//   inp:    (B, T, 3*C) — fused QKV. For each token: [Q_all_heads | K_all_heads | V_all_heads]
+//                          Q starts at offset 0, K at +C, V at +2C within the 3C slot.
+//   preatt: (B, NH, T, T) — raw Q·K scaled scores (for backward; can ignore for inference)
+//   att:    (B, NH, T, T) — post-softmax attention weights (the attention map)
+//   out:    (B, T, C) — attention output, ready for the next projection matmul
+//
+// Math:
+//   For each (b, t, h):
+//     Q = inp[b, t, h*hs : h*hs + hs]
+//     For t2 in 0..t:           // causal: only past + current
+//       score[t2] = (Q · K_{b,t2,h}) / sqrt(hs)
+//     att = softmax(score)       // with max-subtraction for stability
+//     out[b, t, h*hs : h*hs + hs] = sum over t2 of att[t2] * V_{b,t2,h}
+//
+// Four-pass structure (for numerical stability):
+//   pass 1: compute Q·K scores, track max
+//   pass 2: subtract max, exp, accumulate sum
+//   pass 3: normalize (divide by sum), explicit causal zeroing
+//   pass 4: weighted sum of value vectors into output
+//
+// Multi-head concatenation is implicit: each head writes to its slice of out[b, t]
+// at offset h*hs. After all heads run, the C-dim output is naturally filled. No
+// concat operation needed.
+//
+// Causal masking is in t2 <= t loop bounds + explicit zeroing in pass 3.
+
 void attention_forward(float* out, float* preatt, float* att,
                        float* inp,
                        int B, int T, int C, int NH) {

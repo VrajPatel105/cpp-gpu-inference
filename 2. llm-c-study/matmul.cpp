@@ -40,7 +40,7 @@ int main() {
     return 0;
 }
 
-------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 // why this trick works ?
 
 // summary from ai: 
@@ -71,7 +71,7 @@ int main() {
 // Same formula, millions of threads running in parallel.
 // The math never changes. Only the execution model does.
 
---------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------
 
 // // final output 
 // second loop n = 0 val : 1

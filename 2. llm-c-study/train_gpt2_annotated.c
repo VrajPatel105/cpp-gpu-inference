@@ -782,15 +782,16 @@ float* malloc_and_point_activations(ActivationTensors* acts, size_t* act_sizes) 
     return acts_memory; // return the final activation memory
 }
 
+// defining the main GPT2 struct that contains all the static info about hte model.
 typedef struct {
     GPT2Config config;
     // the weights (parameters) of the model, and their sizes
     ParameterTensors params;
     size_t param_sizes[NUM_PARAMETER_TENSORS]; // NUM_PARAMETER_TENSORS = 16, -> size_t param_sizes[16]
-    float* params_memory;
+    float* params_memory; // returned from malloc_and_point_parameters function
     size_t num_parameters;
     // gradients of the weights
-    ParameterTensors grads;
+    ParameterTensors grads; // the main weights of the models or the gradients of the model :) 
     float* grads_memory;
     // buffers for the AdamW optimizer
     float* m_memory;
@@ -798,7 +799,7 @@ typedef struct {
     // the activations of the model, and their sizes
     ActivationTensors acts;
     size_t act_sizes[NUM_ACTIVATION_TENSORS];
-    float* acts_memory;
+    float* acts_memory; // returned from the malloc_and_point_activations function
     size_t num_activations;
     // gradients of the activations
     ActivationTensors grads_acts;

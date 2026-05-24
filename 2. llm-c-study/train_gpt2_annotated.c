@@ -691,6 +691,20 @@ float* malloc_and_point_parameters(ParameterTensors* params, size_t* param_sizes
     return params_memory;// returning the start address of the memory block. 
 }
 
+// The weights (parameters) are different then the activation tensors
+// activation tensors are all the tensors used / required during the forward pass.
+
+// The legend for below : 
+// B -> Batch
+// T -> seq_len
+// C -> d_model
+// L -> layers : 12
+// NH -> Number of heads : 12
+// V -> Vocab size 
+// HS -> size of head : 64
+
+// the entire workflow for this activation tensors is exactly the same as the parameter one (above).
+
 #define NUM_ACTIVATION_TENSORS 23
 typedef struct {
     float* encoded; // (B, T, C)
@@ -765,7 +779,7 @@ float* malloc_and_point_activations(ActivationTensors* acts, size_t* act_sizes) 
         *(ptrs[i]) = acts_memory_iterator;
         acts_memory_iterator += act_sizes[i];
     }
-    return acts_memory;
+    return acts_memory; // return the final activation memory
 }
 
 typedef struct {

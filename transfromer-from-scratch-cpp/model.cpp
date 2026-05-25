@@ -24,6 +24,32 @@ void embeddings_forward(float* out, int* tokens, float* weight, int B, int T, in
     }
 }
 
+
+
+// 2. Positional Encoding
+void positional_encoding(float* x, int B, int T, int d_model){
+    // Transformers have no sense of order by default. 
+    // PE injects position information by adding a fixed vector to each token's embedding. 
+    // The values come from sin/cos formulas, not learned.
+
+    // Formulas used : 
+    // PE[pos][2i]   = sin(pos / 10000^(2i/d_model))
+    // PE[pos][2i+1] = cos(pos / 10000^(2i/d_model))
+
+    for(int b = 0; b<B; b++){
+        for(int t = 0; t<T; t++){
+            for(int i = 0; i<d_model/2; i++){
+                float den = pow(10000,(2.0f*i / d_model));
+                float even = sin(t/den);
+                float odd = cos(t/den);
+                x[b*T*d_model + t*d_model + 2*i] += even;
+                x[b*T*d_model + t*d_model + 2*i+1] += odd;
+            }
+        }
+    }
+}
+
+
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){
     cout << "\nPrinting the weight matrix" << endl;
@@ -58,6 +84,8 @@ int main(){
     float out[16] = {0}; 
 
     embeddings_forward(out, tokens, weight, B, T, d_model);
+
+    positional_encoding(out,B,T,d_model); // here out is basically x which is the input.
 
     PrintOutputMatrix(weight, out);
     cout << "\n\n";

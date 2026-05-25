@@ -50,6 +50,20 @@ void positional_encoding(float* x, int B, int T, int d_model){
 }
 
 
+// function for matrix multiplication
+void matmul(float* A, float* B, float* bias, float* out, int M, int K, int N){
+    for(int m = 0; m<M; m++){
+        for(int n = 0; n<N; n++){
+            float val = (bias != nullptr) ? bias[n] : 0.0f;
+            for(int k = 0; k<K; k++){
+                val += A[m*K + k] * B[k*N + n];
+            }
+            out[m*N + n] = val;
+        }
+    }
+}
+
+
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){
     cout << "\nPrinting the weight matrix" << endl;

@@ -64,6 +64,27 @@ void matmul(float* A, float* B, float* bias, float* out, int M, int K, int N){
 }
 
 
+// feed forward network
+void feedforward_forward(float* out, float* x, float* W1, float* b1, float* W2, float* b2, int B, int T, int d_model, int d_ff){
+    float* intermediate = new float[B * T * d_ff]();
+    //new float[size] asks the OS for a chunk of memory big enough to hold size floats and returns a pointer to the start. 
+    // The () zero-initializes it.
+
+    // First matmul : x * W1 -> intermediate
+    matmul(x, W1, b1, intermediate, B*T, d_model, d_ff);
+
+    // relu operation -> loop over every element in the intermediate/buffer and if the value is > 0, make the value 0.
+    for(int ele = 0; ele < (B*T*d_ff); ele++){
+        if(intermediate[ele] < 0) intermediate[ele] = 0;
+    }
+
+    // Second matmul : intermediate * W2 -> out
+    matmul(intermediate, W2, b2, out, B*T, d_ff, d_model);
+
+    delete[] intermediate; // free up the mem
+}
+
+
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){
     cout << "\nPrinting the weight matrix" << endl;
@@ -93,17 +114,25 @@ int main(){
     int B = 1;
     int T = 4;
     int d_model = 4;
+    int d_ff = 16;
     int tokens[] = {2, 0, 3, 1};
     float weight[] = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}; 
-    float out[16] = {0}; 
+    float out[16] = {0};
+    float W1[] = {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0};
+    float b1[16] = {0};
+    float W2[] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0};
+    float b2[4] = {0}; 
+    float ff_out[16] = {0};
 
     embeddings_forward(out, tokens, weight, B, T, d_model);
 
     positional_encoding(out,B,T,d_model); // here out is basically x which is the input.
 
-    PrintOutputMatrix(weight, out);
+    feedforward_forward(ff_out, out, W1, b1, W2, b2, B, T, d_model, d_ff);
+
+    PrintOutputMatrix(weight, ff_out);
     cout << "\n\n";
-    PrintOutputFlat(weight, out);
+    PrintOutputFlat(weight, ff_out);
 
     return 0;
 }

@@ -51,6 +51,9 @@ void positional_encoding(float* x, int B, int T, int d_model){
 
 
 // function for matrix multiplication
+// @param A - input 
+// @param B - weight 
+// @param out - output
 void matmul(float* A, float* B, float* bias, float* out, int M, int K, int N){
     for(int m = 0; m<M; m++){
         for(int n = 0; n<N; n++){

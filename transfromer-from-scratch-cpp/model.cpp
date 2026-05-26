@@ -253,6 +253,44 @@ void residual(float* out, float* x, float* sublayer_out, int B, int T, int d_mod
     }
 }
 
+
+// Encoder block
+
+void encoder_block(float* out, float* x,
+                   float* Wq, float* Wk, float* Wv, float* Wo,
+                   float* W1, float* b1, float* W2, float* b2,
+                   float* gamma1, float* beta1,
+                   float* gamma2, float* beta2,
+                   float eps, int B, int T, int num_heads, int d_model, int d_ff){
+
+
+                    // initializing the buffers that we need beforehand
+                    float* attn_out = new float[B * T * d_model];
+                    float* residual1 = new float[B * T * d_model];
+                    float* norm1 = new float[B * T * d_model];
+                    float* ff_out = new float[B * T * d_model];
+                    float* residual2 = new float[B * T * d_model];
+
+                    // now applying the functions
+                    // 1. x = layernorm(x + attention(x))
+                    // 2. x = layernorm(x + feed_forward(x))
+
+                    attention_forward(attn_out, x, Wq, Wk, Wv, Wo, B, T, num_heads, d_model);
+                    residual(residual1, x, attn_out, B, T, d_model);
+                    layernorm(norm1, residual1, gamma1, beta1, eps, B, T, d_model);
+                    feedforward_forward(ff_out, norm1, W1, b1, W2, b2, B, T, d_model, d_ff);
+                    residual(residual2, norm1, ff_out, B, T, d_model);
+                    layernorm(out, residual2, gamma2, beta2, eps, B, T, d_model);
+
+
+                    // free up the initialized buffers
+                    delete[] attn_out;
+                    delete[] residual1;
+                    delete[] norm1;
+                    delete[] ff_out;
+                    delete[] residual2; 
+                   }
+
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){
     cout << "\nPrinting the weight matrix" << endl;

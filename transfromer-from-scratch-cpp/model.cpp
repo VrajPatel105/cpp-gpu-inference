@@ -324,6 +324,8 @@ int main(){
     int tokens[] = {2, 0, 3, 1};
     float weight[] = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}; 
     float out[16] = {0};
+    float pe_out[16] = {0};
+    float enc_out[16] = {0};
     float W1[] = {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0};
     float b1[16] = {0};
     float W2[] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0};
@@ -335,22 +337,49 @@ int main(){
     float Wv[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
     float Wo[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
     float mha_out[16] = {0};
+    float eps = 1e-5;
+    float gamma1[4] = {1,1,1,1};
+    float beta1[4]  = {0,0,0,0};
+    float gamma2[4] = {1,1,1,1};
+    float beta2[4]  = {0,0,0,0};
+
 
     embeddings_forward(out, tokens, weight, B, T, d_model);
 
     positional_encoding(out,B,T,d_model); // here out is basically x which is the input.
 
-    feedforward_forward(ff_out, out, W1, b1, W2, b2, B, T, d_model, d_ff);
+    // feedforward_forward(ff_out, out, W1, b1, W2, b2, B, T, d_model, d_ff);
 
-    attention_forward(mha_out, out, Wq, Wk, Wv, Wo, B, T, num_heads, d_model);
+    // attention_forward(mha_out, out, Wq, Wk, Wv, Wo, B, T, num_heads, d_model);
 
     // layernorm();
 
     // residual();
 
-    PrintOutputMatrix(weight, mha_out);
+    encoder_block(enc_out, out, Wq, Wk, Wv, Wo, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, eps, B, T, num_heads, d_model, d_ff);
+
+    // abve function call output : 
+    // weight - output matrix 
+    // 1 - -1.13126
+    // 0 - -0.5201
+    // 0 - 1.56264
+    // 0 - 0.0887169
+    // 0 - 1.59509
+    // 1 - -0.727529
+    // 0 - -0.958211
+    // 0 - 0.0906536
+    // 0 - 0.0421487
+    // 0 - -0.840558
+    // 1 - -0.820005
+    // 0 - 1.61841
+    // 0 - -0.547029
+    // 0 - -0.0884168
+    // 0 - -1.00346
+    // 1 - 1.6389
+
+    PrintOutputMatrix(weight, enc_out);
     cout << "\n\n";
-    PrintOutputFlat(weight, mha_out);
+    PrintOutputFlat(weight, enc_out);
 
     return 0;
 }

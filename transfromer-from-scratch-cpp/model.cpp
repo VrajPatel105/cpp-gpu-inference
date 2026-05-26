@@ -166,7 +166,9 @@ void attention_forward(float* out, float* x, float* k_input, float* v_input,
                     }  
                     scores[b*num_heads*T*T + h*T*T + t*T + t2] = val;
                     scores[b*num_heads*T*T + h*T*T + t*T + t2] /= sqrt(d_k);
-                    if(t2 > t) scores[b*num_heads*T*T + h*T*T + t*T + t2] = -1e9f;
+                    if(causal){
+                        if(t2 > t) scores[b*num_heads*T*T + h*T*T + t*T + t2] = -1e9f;
+                    }
                 }
 
                 // softmax : 

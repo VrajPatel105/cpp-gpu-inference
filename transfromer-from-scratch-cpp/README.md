@@ -1,23 +1,17 @@
 # Transformer in C++
 
-Porting my PyTorch encoder-decoder transformer to C++.
+I built a transformer in PyTorch last month. Now I'm porting it to C++ — no frameworks, no autograd, just flat arrays and index math.
 
-## What's in here
+## What's implemented
 
-A from-scratch C++ implementation of the transformer architecture — no PyTorch, no frameworks, just flat arrays and index math.
+Every component written from scratch in pure C++:
 
-## Components
+matmul, layernorm, softmax, embeddings, positional encoding, multi-head attention (with cross-attention support), feedforward, encoder block, decoder block.
 
-- `matmul` — matrix multiplication
-- `layernorm` — layer normalization  
-- `softmax` — softmax
-- `embedding` — token embedding lookup
-- `attention` — multi-head attention
-- `feedforward` — FFN block
-- `encoder` — full encoder block
-- `decoder` — full decoder block
-- `transformer` — full forward pass
+## Why
+
+Part of a self-directed roadmap: C++ → CUDA → Triton → FlashAttention → INT8 quantization. This is the foundation before GPU work starts.
 
 ## Reference
 
-PyTorch version: `https://github.com/VrajPatel105/Transformer-Implementation-from-scratch-with-custom-dataset/blob/main/model.py`
+Original PyTorch implementation: github.com/VrajPatel105/Transformer-Implementation-from-scratch-with-custom-dataset/blob/main/model.py

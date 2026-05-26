@@ -248,6 +248,12 @@ int main(){
     float W2[] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0};
     float b2[4] = {0}; 
     float ff_out[16] = {0};
+    int num_heads = 2;
+    float Wq[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wk[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wv[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wo[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float mha_out[16] = {0};
 
     embeddings_forward(out, tokens, weight, B, T, d_model);
 
@@ -255,10 +261,11 @@ int main(){
 
     feedforward_forward(ff_out, out, W1, b1, W2, b2, B, T, d_model, d_ff);
 
+    attention_forward(mha_out, out, Wq, Wk, Wv, Wo, B, T, num_heads, d_model);
 
-    PrintOutputMatrix(weight, ff_out);
+    PrintOutputMatrix(weight, mha_out);
     cout << "\n\n";
-    PrintOutputFlat(weight, ff_out);
+    PrintOutputFlat(weight, mha_out);
 
     return 0;
 }

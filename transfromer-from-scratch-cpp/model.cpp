@@ -354,6 +354,10 @@ void decoder_block(float* out, float* x, float* enc_out,
                    }
 
 
+void projection_forward(float* out, float* x, float* W, int B, int T, int d_model, int vocab_size) {
+    matmul(x, W, nullptr, out, B*T, d_model, vocab_size);
+}
+
 
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){

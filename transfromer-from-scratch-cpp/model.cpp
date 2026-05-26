@@ -140,6 +140,8 @@ void attention_forward(float* out, float* x, float* Wq, float* Wk, float* Wv, fl
     float* K = new float[B * T * d_model]();
     float* V = new float[B * T * d_model]();
     float* scores = new float[B * num_heads * T * T]();
+    float* attn_weights = new float[B * num_heads * T * T]();
+    float* attn_out = new float[B * T * d_model]();
 
     // multiply the Q,K,V with their corresponding weights Wq, Wk, Wv
     matmul(x, Wq, nullptr, Q, B*T, d_model, d_model);
@@ -163,9 +165,48 @@ void attention_forward(float* out, float* x, float* Wq, float* Wk, float* Wv, fl
                     scores[b*num_heads*T*T + h*T*T + t*T + t2] = val;
                     scores[b*num_heads*T*T + h*T*T + t*T + t2] /= sqrt(d_k);
                 }
+
+                // softmax : 
+                // initializing few vars
+                float* score_slice = scores + b*num_heads*T*T + h*T*T + t*T;
+                float* attn_slice = attn_weights + b*num_heads*T*T + h*T*T + t*T;
+                // step 1 : Find the max value over C elements
+                float max_val = score_slice[0];
+                for(int i = 1; i < T; i++){
+                    if(score_slice[i] > max_val) max_val = score_slice[i];
+                }
+                // step 2 : Subtract max, take exp of each, sum them up
+                float sum = 0;
+                for(int i = 0; i < T; i++){
+                    sum += exp(score_slice[i] - max_val);
+                    attn_slice[i] = exp(score_slice[i] - max_val);
+                }
+                // step 3 : Divide each by the sum
+                for(int i = 0; i<T; i++){
+                    attn_slice[i] = attn_slice[i] / sum;
+                }
+
+                // now multiply by V
+                for(int i = 0; i<d_k; i++){
+                    float val = 0;
+                    for(int t2 = 0; t2<T; t2++){
+                        val += attn_weights[b*num_heads*T*T + h*T*T + t*T + t2] * V[b*T*num_heads*d_k + t2*num_heads*d_k + h*d_k + i];
+                    }
+                    attn_out[b*T*num_heads*d_k + t*num_heads*d_k + h*d_k + i] = val;
+                }
+                
             }
         }
     }
+    // now finally multiply attn_out with Wo
+    matmul(attn_out, Wo, nullptr, out, B*T, d_model, d_model);
+
+    delete[] Q;
+    delete[] K;
+    delete[] V;
+    delete[] scores;
+    delete[] attn_weights;
+    delete[] attn_out;
 }
 
 
@@ -213,6 +254,7 @@ int main(){
     positional_encoding(out,B,T,d_model); // here out is basically x which is the input.
 
     feedforward_forward(ff_out, out, W1, b1, W2, b2, B, T, d_model, d_ff);
+
 
     PrintOutputMatrix(weight, ff_out);
     cout << "\n\n";

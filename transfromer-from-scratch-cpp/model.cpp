@@ -51,9 +51,9 @@ void positional_encoding(float* x, int B, int T, int d_model){
 
 
 // function for matrix multiplication
-// @param A - input 
-// @param B - weight 
-// @param out - output
+// @param A input 
+// @param B weight 
+// @param out output
 void matmul(float* A, float* B, float* bias, float* out, int M, int K, int N){
     for(int m = 0; m<M; m++){
         for(int n = 0; n<N; n++){
@@ -85,6 +85,47 @@ void feedforward_forward(float* out, float* x, float* W1, float* b1, float* W2, 
     matmul(intermediate, W2, b2, out, B*T, d_ff, d_model);
 
     delete[] intermediate; // free up the mem
+}
+
+// MHA function
+void attention_forward(float* out, float* x, float* Wq, float* Wk, float* Wv, float* Wo, int B, int T, int num_heads, int d_model){
+    // The steps to be followed: 
+    // 1. Multiply x with weight matrices of Q,K,V : x * Wq -> x * Wk -> x * Wv 
+    // 2. split into num heads and also initialize the d_k var
+    // 3. implement the formula : Attention(Q,K,V) = softmax((Q*K.transpose)/root(d_k)) * V
+    // 4. write to output
+
+    // first we need three bufferes since it's not a good practice to dirctly modify input 'x'.
+    float* Q = new float[B * T * d_model]();
+    float* K = new float[B * T * d_model]();
+    float* V = new float[B * T * d_model]();
+    float* scores = new float[B * num_heads * T * T]();
+
+    // multiply the Q,K,V with their corresponding weights Wq, Wk, Wv
+    matmul(x, Wq, nullptr, Q, B*T, d_model, d_model);
+    matmul(x, Wk, nullptr, K, B*T, d_model, d_model);
+    matmul(x, Wv, nullptr, V, B*T, d_model, d_model);
+    
+    // split into heads
+    int d_k = d_model / num_heads; // we should also add a checker here that checks that this is divisible. 
+
+    // we actually dont have to split into heads since Q,K and V are actuall 1D arrays (matrix are just for our viz). 
+    // so accordintg to the patter, we will use : b*T*num_heads*d_k + t*num_heads*d_k + h*d_k + i
+    
+    for(int b = 0; b<B; b++){
+        for(int t = 0; t<T; t++){
+            for(int h = 0; h<num_heads; h++){
+                for(int t2 = 0; t2<T; t2++){
+                    float val = 0;
+                    for(int i = 0; i<d_k; i++){
+                        val += Q[b*T*num_heads*d_k + t*num_heads*d_k + h*d_k + i] * K[b*T*num_heads*d_k + t2*num_heads*d_k + h*d_k + i];
+                    }  
+                    scores[b*num_heads*T*T + h*T*T + t*T + t2] = val;
+                    scores[b*num_heads*T*T + h*T*T + t*T + t2] /= sqrt(d_k);
+                }
+            }
+        }
+    }
 }
 
 

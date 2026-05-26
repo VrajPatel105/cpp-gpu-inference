@@ -507,9 +507,9 @@ int main(){
     float dec_out[16] = {0};
 
 
-    embeddings_forward(out, tokens, weight, B, T, d_model);
+    // embeddings_forward(out, tokens, weight, B, T, d_model);
 
-    positional_encoding(out,B,T,d_model); // here out is basically x which is the input.
+    // positional_encoding(out,B,T,d_model); // here out is basically x which is the input.
 
     // feedforward_forward(ff_out, out, W1, b1, W2, b2, B, T, d_model, d_ff);
 
@@ -519,7 +519,7 @@ int main(){
 
     // residual();
 
-    encoder_block(enc_out, out, Wq, Wk, Wv, Wo, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, eps, B, T, num_heads, d_model, d_ff);
+    // encoder_block(enc_out, out, Wq, Wk, Wv, Wo, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, eps, B, T, num_heads, d_model, d_ff);
 
     // abve function call output : 
     // weight - output matrix 
@@ -542,7 +542,7 @@ int main(){
 
 
     // calling decoder block
-    decoder_block(dec_out, out, enc_out, Wq1, Wk1, Wv1, Wo1, Wq2, Wk2, Wv2, Wo2, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, gamma3, beta3, eps, B, T, num_heads, d_model, d_ff);
+    // decoder_block(dec_out, out, enc_out, Wq1, Wk1, Wv1, Wo1, Wq2, Wk2, Wv2, Wo2, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, gamma3, beta3, eps, B, T, num_heads, d_model, d_ff);
 
     // otput for decoder : 
     // weight - output matrix 
@@ -563,9 +563,49 @@ int main(){
     // 0 - -1.06249
     // 1 - 1.51895
 
-    PrintOutputMatrix(weight, dec_out);
+    // calling the transformer block all together
+    int vocab_size = 5;  // small for testing
+    float proj_weight[4 * 5] = {
+    1, 0, 0, 0, 0,
+    0, 1, 0, 0, 0,
+    0, 0, 1, 0, 0,
+    0, 0, 0, 1, 0
+    };
+    float transformer_out[1 * 4 * 5] = {0};  // B * T * vocab_size
+
+    transformer_block(transformer_out, tokens, weight, tokens, weight,
+                  Wq, Wk, Wv, Wo,
+                  Wq1, Wk1, Wv1, Wo1,
+                  Wq2, Wk2, Wv2, Wo2,
+                  W1, b1, W2, b2,
+                  gamma1, beta1,
+                  gamma2, beta2,
+                  gamma3, beta3,
+                  proj_weight, vocab_size,
+                  eps, B, T, num_heads, d_model, d_ff, 2);
+
+    // transformer block output 
+    // weight - output matrix 
+    // 1 - 0.0565683
+    // 0 - 0.0630902
+    // 0 - 0.667757
+    // 0 - 0.0911744
+    // 0 - 0.121411
+    // 1 - 0.554341
+    // 0 - 0.0482132
+    // 0 - 0.0564849
+    // 0 - 0.207866
+    // 0 - 0.133096
+    // 1 - 0.112971
+    // 0 - 0.0572973
+    // 0 - 0.0554605
+    // 0 - 0.650646
+    // 0 - 0.123625
+    // 1 - 0.0814983
+
+    PrintOutputMatrix(weight, transformer_out);
     cout << "\n\n";
-    PrintOutputFlat(weight, dec_out);
+    PrintOutputFlat(weight, transformer_out);
 
     return 0;
 }

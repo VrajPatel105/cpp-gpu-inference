@@ -87,7 +87,7 @@ void feedforward_forward(float* out, float* x, float* W1, float* b1, float* W2, 
     delete[] intermediate; // free up the mem
 }
 
-void softmax(float* out, float* x, float* weight, float* bias, float eps, int B, int T, int C){
+void softmax(float* out, float* x, int B, int T, int C){
     // argument's info:
     // out -> where to write the result, shape (B,T,C)
     // x -> input, shape (B,T,C). One C-dim vector per token
@@ -130,7 +130,7 @@ void softmax(float* out, float* x, float* weight, float* bias, float eps, int B,
 // MHA function
 void attention_forward(float* out, float* x, float* k_input, float* v_input,
                        float* Wq, float* Wk, float* Wv, float* Wo,
-                       int B, int T, int num_heads, int d_model){
+                       int B, int T, int num_heads, int d_model, bool causal){
     // The steps to be followed: 
     // 1. Multiply x with weight matrices of Q,K,V : x * Wq -> x * Wk -> x * Wv 
     // 2. split into num heads and also initialize the d_k var
@@ -166,6 +166,7 @@ void attention_forward(float* out, float* x, float* k_input, float* v_input,
                     }  
                     scores[b*num_heads*T*T + h*T*T + t*T + t2] = val;
                     scores[b*num_heads*T*T + h*T*T + t*T + t2] /= sqrt(d_k);
+                    if(t2 > t) scores[b*num_heads*T*T + h*T*T + t*T + t2] = -1e9f;
                 }
 
                 // softmax : 
@@ -277,7 +278,7 @@ void encoder_block(float* out, float* x,
                     // 1. x = layernorm(x + attention(x))
                     // 2. x = layernorm(x + feed_forward(x))
 
-                    attention_forward(attn_out, x, x, x, Wq, Wk, Wv, Wo, B, T, num_heads, d_model);
+                    attention_forward(attn_out, x, x, x, Wq, Wk, Wv, Wo, B, T, num_heads, d_model, false);
                     residual(residual1, x, attn_out, B, T, d_model);
                     layernorm(norm1, residual1, gamma1, beta1, eps, B, T, d_model);
                     feedforward_forward(ff_out, norm1, W1, b1, W2, b2, B, T, d_model, d_ff);
@@ -296,7 +297,6 @@ void encoder_block(float* out, float* x,
 
 
 // Decoder block 
-// NOTE : we are skipping the mask here. we are keeping it simple. so masked attention block will simply be the normal attention block :)
 void decoder_block(float* out, float* x, float* enc_out,
                    float* Wq1, float* Wk1, float* Wv1, float* Wo1,  // masked self-attn
                    float* Wq2, float* Wk2, float* Wv2, float* Wo2,  // cross-attn
@@ -325,12 +325,12 @@ void decoder_block(float* out, float* x, float* enc_out,
                     // calling the functions for decoder
 
                     // 1. x = layernorm(x + masked_attention(x))
-                    attention_forward(mask_attn_out, x, x, x, Wq1, Wk1, Wv1, Wo1, B, T, num_heads, d_model);
+                    attention_forward(mask_attn_out, x, x, x, Wq1, Wk1, Wv1, Wo1, B, T, num_heads, d_model, true);
                     residual(residual1, x, mask_attn_out, B, T, d_model);
                     layernorm(norm1, residual1, gamma1, beta1, eps, B, T, d_model);
                     
                     // 2. x = layernorm(x + cross_attention(x, enc_out))
-                    attention_forward(cross_attn_out, norm1, enc_out, enc_out, Wq2, Wk2, Wv2, Wo2, B, T, num_heads, d_model); // note that Wk2 and Wv2 are encoder ouputs
+                    attention_forward(cross_attn_out, norm1, enc_out, enc_out, Wq2, Wk2, Wv2, Wo2, B, T, num_heads, d_model, false); // note that Wk2 and Wv2 are encoder ouputs
                     residual(residual2, norm1, cross_attn_out, B, T, d_model);
                     layernorm(norm2, residual2, gamma2, beta2, eps, B, T, d_model);
                     

@@ -358,6 +358,87 @@ void projection_forward(float* out, float* x, float* W, int B, int T, int d_mode
     matmul(x, W, nullptr, out, B*T, d_model, vocab_size);
 }
 
+// transformer block structural flow 
+//src tokens -> embedding -> PE -> N * encoder_block -> encoder output
+// tgt tokens -> embedding -> PE -> N * decoder_block (takes encoder output) -> projection -> logits
+
+void transformer_block(float* out, int* src_tokens, float* src_embed_weight, int* tgt_tokens, float* tgt_embed_weight,
+                   float* Wq, float* Wk, float* Wv, float* Wo, // for the encoder mha
+                   float* Wq1, float* Wk1, float* Wv1, float* Wo1,  // masked self-attn
+                   float* Wq2, float* Wk2, float* Wv2, float* Wo2,  // cross-attn
+                   float* W1, float* b1, float* W2, float* b2,
+                   float* gamma1, float* beta1,
+                   float* gamma2, float* beta2,
+                   float* gamma3, float* beta3,
+                   float* proj_weight, int vocab_size,
+                   float eps, int B, int T, int num_heads, int d_model, int d_ff, int N){
+
+                    // defining the bufferes needed
+                    float* src_embeddings_out = new float[B * T * d_model];
+                    float* enc_out = new float[B * T * d_model];
+
+                    float* tgt_embeddings_out = new float[B * T * d_model];
+                    float* dec_out = new float[B * T * d_model];
+
+                    float* proj_out = new float[B * T * vocab_size];
+
+
+                    // source tokens to embeddings
+                    embeddings_forward(src_embeddings_out, src_tokens, src_embed_weight, B, T, d_model);
+                    // positional encoding on the soure embeddings output
+                    positional_encoding(src_embeddings_out, B, T, d_model);
+            
+                    // now the encoder block N times
+                    for(int n = 0; n<N; n++){
+                        if(n == 0){ // for the first time, the input would be src_embeddings_out then it would be the enc_out itself
+                            encoder_block(enc_out, src_embeddings_out, Wq, Wk, Wv, Wo, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, eps, B, T, num_heads, d_model, d_ff);
+                        }else{
+                            encoder_block(enc_out, enc_out, Wq, Wk, Wv, Wo, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, eps, B, T, num_heads, d_model, d_ff);
+                        }
+                    }
+
+                    // I can also do this encoder and decoder loop the other way : 
+                    // float* enc_in = src_embeddings_out;
+                    // for(int n = 0; n < N; n++){
+                    //     encoder_block(enc_out, enc_in, ...);
+                    //     enc_in = enc_out;
+                    // }
+                    // But I have kept the one that i have simply.
+
+                    // now final output would be stored in enc_out
+
+                    // now we initialize the decoder's embeddings along with PE and then decoder block
+                    
+                    // tgt tokens to embeddings
+                    embeddings_forward(tgt_embeddings_out, tgt_tokens, tgt_embed_weight, B, T, d_model);
+                    // positional encoding on the target embeddings output
+                    positional_encoding(tgt_embeddings_out, B, T, d_model);
+
+                    // now the decoder block N times
+                    for(int n = 0; n<N; n++){
+                        if(n==0){
+                            decoder_block(dec_out, tgt_embeddings_out, enc_out, Wq1, Wk1, Wv1, Wo1, Wq2, Wk2, Wv2, Wo2, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, gamma3, beta3, eps, B, T, num_heads, d_model, d_ff);
+                        }else{
+                            decoder_block(dec_out, dec_out, enc_out, Wq1, Wk1, Wv1, Wo1, Wq2, Wk2, Wv2, Wo2, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, gamma3, beta3, eps, B, T, num_heads, d_model, d_ff);
+                        }
+                    }
+
+                    // now the final projection layer
+                    projection_forward(proj_out, dec_out, proj_weight, B, T, d_model, vocab_size);
+
+                    // now the logits and more which i am not sure about, so i will ask. 
+                    softmax(out, proj_out, B, T, vocab_size);
+
+                    // free up the memory.
+                    delete[] src_embeddings_out;
+                    delete[] enc_out;
+                    delete[] tgt_embeddings_out;
+                    delete[] dec_out;
+                    delete[] proj_out;
+
+}
+
+
 
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){

@@ -87,6 +87,46 @@ void feedforward_forward(float* out, float* x, float* W1, float* b1, float* W2, 
     delete[] intermediate; // free up the mem
 }
 
+void softmax(float* out, float* x, float* weight, float* bias, float eps, int B, int T, int C){
+    // argument's info:
+    // out -> where to write the result, shape (B,T,C)
+    // x -> input, shape (B,T,C). One C-dim vector per token
+    // weight -> scale, shape(C,). One value per channel.
+    // bias -> shift, shape(C,). One value per channel.
+    // eps -> small number like 1e-5, prevents divide by zero in rstd
+    // B -> Batch Size
+    // T -> sequence length
+    // C -> d_model
+
+    for(int b = 0; b < B; b++){
+        for(int t = 0; t < T; t++){
+            // lets also get the pointer the the token's C-dim vector
+            float* x_bt = x + b*T*C + t*C;
+            
+            // step 1 : Find the max value over C elements
+            float max_val = x_bt[0];
+            for(int i = 1; i < C; i++){
+                if(x_bt[i] > max_val) max_val = x_bt[i];
+            }
+
+            // step 2 : Subtract max, take exp of each, sum them up
+            float sum = 0;
+            float* out_bt = out + b*T*C + t*C;
+
+            for(int i = 0; i < C; i++){
+                sum += exp(x_bt[i] - max_val);
+                out_bt[i] = exp(x_bt[i] - max_val);
+            }
+
+            // step 3 : Divide each by the sum
+            for(int i = 0; i<C; i++){
+                out_bt[i] = out_bt[i] / sum;
+            }
+        }
+    }
+
+}
+
 // MHA function
 void attention_forward(float* out, float* x, float* Wq, float* Wk, float* Wv, float* Wo, int B, int T, int num_heads, int d_model){
     // The steps to be followed: 

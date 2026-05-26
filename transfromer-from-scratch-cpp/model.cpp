@@ -210,6 +210,38 @@ void attention_forward(float* out, float* x, float* Wq, float* Wk, float* Wv, fl
 }
 
 
+void layernorm(float* out, float* x, float* gamma, float* beta, float eps, int B, int T, int d_model){
+
+    for(int b = 0; b < B; b++){
+        for(int t = 0; t < T; t++){
+            // lets also get the pointer the the token's C-dim vector
+            float* x_bt = x + b*T*d_model + t*d_model;
+            // step 1 : calculate the mean
+            float total_sum = 0;
+            for(int i = 0; i<d_model; i++){
+                total_sum += x_bt[i];
+            }
+            float mean = total_sum / d_model;
+
+            // step 2 : calculate the variance
+            float sum = 0;
+            for(int i = 0; i<d_model; i++){
+                sum += (x_bt[i] - mean)*(x_bt[i] - mean);
+            }
+            float var = sum / d_model;
+            
+            // step 3 : calculate the rstd
+            float rstd = 1 / sqrt(var + eps);
+
+            // step 4 : Normalize + Scale + shift
+            float* out_bt = out + b*T*d_model + t*d_model;
+            for(int i = 0; i < d_model; i++){
+                out_bt[i] = (x_bt[i] - mean) * rstd * gamma[i] + beta[i];
+            }
+        }
+    }
+}
+
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){
     cout << "\nPrinting the weight matrix" << endl;

@@ -242,6 +242,17 @@ void layernorm(float* out, float* x, float* gamma, float* beta, float eps, int B
     }
 }
 
+// residual connection block
+void residual(float* out, float* x, float* sublayer_out, int B, int T, int d_model){
+    for(int b = 0; b<B; b++){
+        for(int t = 0; t<T; t++){
+            for(int row = 0; row < d_model; row++){
+                out[b*T*d_model + t*d_model + row] = x[b*T*d_model + t*d_model + row] + sublayer_out[b*T*d_model + t*d_model + row];
+            }
+        }
+    }
+}
+
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){
     cout << "\nPrinting the weight matrix" << endl;
@@ -294,6 +305,10 @@ int main(){
     feedforward_forward(ff_out, out, W1, b1, W2, b2, B, T, d_model, d_ff);
 
     attention_forward(mha_out, out, Wq, Wk, Wv, Wo, B, T, num_heads, d_model);
+
+    // layernorm();
+
+    // residual();
 
     PrintOutputMatrix(weight, mha_out);
     cout << "\n\n";

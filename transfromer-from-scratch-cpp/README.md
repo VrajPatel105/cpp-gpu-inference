@@ -8,15 +8,15 @@ A from-scratch C++ implementation of the transformer architecture — no PyTorch
 
 ## Components
 
-- `matmul.cpp` — matrix multiplication
-- `layernorm.cpp` — layer normalization  
-- `softmax.cpp` — softmax
-- `embedding.cpp` — token embedding lookup
-- `attention.cpp` — multi-head attention
-- `feedforward.cpp` — FFN block
-- `encoder.cpp` — full encoder block
-- `decoder.cpp` — full decoder block
-- `transformer.cpp` — full forward pass
+- `matmul` — matrix multiplication
+- `layernorm` — layer normalization  
+- `softmax` — softmax
+- `embedding` — token embedding lookup
+- `attention` — multi-head attention
+- `feedforward` — FFN block
+- `encoder` — full encoder block
+- `decoder` — full decoder block
+- `transformer` — full forward pass
 
 ## Reference
 

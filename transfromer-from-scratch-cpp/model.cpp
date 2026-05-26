@@ -128,7 +128,9 @@ void softmax(float* out, float* x, float* weight, float* bias, float eps, int B,
 }
 
 // MHA function
-void attention_forward(float* out, float* x, float* Wq, float* Wk, float* Wv, float* Wo, int B, int T, int num_heads, int d_model){
+void attention_forward(float* out, float* x, float* k_input, float* v_input,
+                       float* Wq, float* Wk, float* Wv, float* Wo,
+                       int B, int T, int num_heads, int d_model){
     // The steps to be followed: 
     // 1. Multiply x with weight matrices of Q,K,V : x * Wq -> x * Wk -> x * Wv 
     // 2. split into num heads and also initialize the d_k var
@@ -145,8 +147,8 @@ void attention_forward(float* out, float* x, float* Wq, float* Wk, float* Wv, fl
 
     // multiply the Q,K,V with their corresponding weights Wq, Wk, Wv
     matmul(x, Wq, nullptr, Q, B*T, d_model, d_model);
-    matmul(x, Wk, nullptr, K, B*T, d_model, d_model);
-    matmul(x, Wv, nullptr, V, B*T, d_model, d_model);
+    matmul(k_input, Wk, nullptr, K, B*T, d_model, d_model);
+    matmul(v_input, Wv, nullptr, V, B*T, d_model, d_model);
     
     // split into heads
     int d_k = d_model / num_heads; // we should also add a checker here that checks that this is divisible. 
@@ -275,7 +277,7 @@ void encoder_block(float* out, float* x,
                     // 1. x = layernorm(x + attention(x))
                     // 2. x = layernorm(x + feed_forward(x))
 
-                    attention_forward(attn_out, x, Wq, Wk, Wv, Wo, B, T, num_heads, d_model);
+                    attention_forward(attn_out, x, x, x, Wq, Wk, Wv, Wo, B, T, num_heads, d_model);
                     residual(residual1, x, attn_out, B, T, d_model);
                     layernorm(norm1, residual1, gamma1, beta1, eps, B, T, d_model);
                     feedforward_forward(ff_out, norm1, W1, b1, W2, b2, B, T, d_model, d_ff);
@@ -290,6 +292,66 @@ void encoder_block(float* out, float* x,
                     delete[] ff_out;
                     delete[] residual2; 
                    }
+
+
+
+// Decoder block 
+// NOTE : we are skipping the mask here. we are keeping it simple. so masked attention block will simply be the normal attention block :)
+void decoder_block(float* out, float* x, float* enc_out,
+                   float* Wq1, float* Wk1, float* Wv1, float* Wo1,  // masked self-attn
+                   float* Wq2, float* Wk2, float* Wv2, float* Wo2,  // cross-attn
+                   float* W1, float* b1, float* W2, float* b2,
+                   float* gamma1, float* beta1,
+                   float* gamma2, float* beta2,
+                   float* gamma3, float* beta3,
+                   float eps, int B, int T, int num_heads, int d_model, int d_ff){
+
+                    // the order : 
+                    // 1. x = layernorm(x + masked_attention(x))
+                    // 2. x = layernorm(x + cross_attention(x, enc_out))
+                    // 3. x = layernorm(x + feedforward(x))
+                    
+                    // lets define the buffers needed.
+                    float* mask_attn_out = new float[B * T * d_model];
+                    float* residual1 = new float[B * T * d_model];
+                    float* norm1 = new float[B * T * d_model];
+                    float* cross_attn_out = new float[B * T * d_model];
+                    float* residual2 = new float[B * T * d_model];
+                    float* norm2 = new float[B * T * d_model];
+                    float* ffn_out = new float[B * T * d_model];
+                    float* residual3 = new float[B * T * d_model];
+
+
+                    // calling the functions for decoder
+
+                    // 1. x = layernorm(x + masked_attention(x))
+                    attention_forward(mask_attn_out, x, x, x, Wq1, Wk1, Wv1, Wo1, B, T, num_heads, d_model);
+                    residual(residual1, x, mask_attn_out, B, T, d_model);
+                    layernorm(norm1, residual1, gamma1, beta1, eps, B, T, d_model);
+                    
+                    // 2. x = layernorm(x + cross_attention(x, enc_out))
+                    attention_forward(cross_attn_out, norm1, enc_out, enc_out, Wq2, Wk2, Wv2, Wo2, B, T, num_heads, d_model); // note that Wk2 and Wv2 are encoder ouputs
+                    residual(residual2, norm1, cross_attn_out, B, T, d_model);
+                    layernorm(norm2, residual2, gamma2, beta2, eps, B, T, d_model);
+                    
+                    // 3. x = layernorm(x + feedforward(x))
+                    feedforward_forward(ffn_out, norm2, W1, b1, W2, b2, B, T, d_model, d_ff);
+                    residual(residual3, norm2, ffn_out, B, T, d_model);
+                    layernorm(out, residual3, gamma3, beta3, eps, B, T, d_model);
+
+
+                    // finally freeing up the memory
+                    delete[] mask_attn_out;
+                    delete[] residual1;
+                    delete[] norm1;
+                    delete[] cross_attn_out;
+                    delete[] residual2;
+                    delete[] norm2;
+                    delete[] ffn_out;
+                    delete[] residual3;
+                   }
+
+
 
 // writing output matrix printing func. -> this is better in terms of viz. prints 2D matrix
 void PrintOutputMatrix(float* weight, float* arr){
@@ -336,12 +398,26 @@ int main(){
     float Wk[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
     float Wv[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
     float Wo[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    
+    float Wq1[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wk1[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wv1[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wo1[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+
+    float Wq2[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wk2[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wv2[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    float Wo2[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+
     float mha_out[16] = {0};
     float eps = 1e-5;
     float gamma1[4] = {1,1,1,1};
     float beta1[4]  = {0,0,0,0};
     float gamma2[4] = {1,1,1,1};
     float beta2[4]  = {0,0,0,0};
+    float gamma3[4] = {1,1,1,1};
+    float beta3[4]  = {0,0,0,0};
+    float dec_out[16] = {0};
 
 
     embeddings_forward(out, tokens, weight, B, T, d_model);
@@ -377,9 +453,32 @@ int main(){
     // 0 - -1.00346
     // 1 - 1.6389
 
-    PrintOutputMatrix(weight, enc_out);
+
+    // calling decoder block
+    decoder_block(dec_out, out, enc_out, Wq1, Wk1, Wv1, Wo1, Wq2, Wk2, Wv2, Wo2, W1, b1, W2, b2, gamma1, beta1, gamma2, beta2, gamma3, beta3, eps, B, T, num_heads, d_model, d_ff);
+
+    // otput for decoder : 
+    // weight - output matrix 
+    // 1 - -1.07892
+    // 0 - -0.124557
+    // 0 - 1.62551
+    // 0 - -0.422041
+    // 0 - 0.817816
+    // 1 - -0.522881
+    // 0 - -1.37512
+    // 0 - 1.08018
+    // 0 - -0.218976
+    // 0 - -0.341237
+    // 1 - -1.07611
+    // 0 - 1.63633
+    // 0 - -0.707657
+    // 0 - 0.251202
+    // 0 - -1.06249
+    // 1 - 1.51895
+
+    PrintOutputMatrix(weight, dec_out);
     cout << "\n\n";
-    PrintOutputFlat(weight, enc_out);
+    PrintOutputFlat(weight, dec_out);
 
     return 0;
 }

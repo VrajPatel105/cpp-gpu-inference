@@ -23,7 +23,9 @@ using namespace std;
 
 __global__ void squareKernel(int *a, int *b, int len){
     int id = blockIdx.x * blockDim.x + threadIdx.x;
-    b[id] = a[id] * a[id];
+    if (id < len) {
+        b[id] = a[id] * a[id];
+    }// we add this if statement to make sure that if the len is not clean multiple of the block size, the threads won't get out of bounds
 }
 
 int main(){
@@ -43,13 +45,18 @@ int main(){
     cudaMemcpy(d_arr, h_arr, len * sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_result_arr, h_result_arr, len * sizeof(int), cudaMemcpyHostToDevice);
 
-    squareKernel<<<1,len>>>(d_arr, d_result_arr, len);
+    squareKernel<<<2,5>>>(d_arr, d_result_arr, len);
 
     cudaMemcpy(h_result_arr, d_result_arr, len * sizeof(int), cudaMemcpyDeviceToHost);
 
     for(int i = 0; i<len; i++){
         cout << h_result_arr[i] << endl;
     }
+
+    cudaFree(d_arr);
+    cudaFree(d_result_arr);
+    delete[] h_arr;
+    delete[] h_result_arr;
 
     return 0;
 }

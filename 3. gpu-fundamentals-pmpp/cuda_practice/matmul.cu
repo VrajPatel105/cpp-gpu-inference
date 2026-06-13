@@ -80,6 +80,15 @@ int main(){
         cout << h_C[i] << endl;
     }
 
+    // writing a manual loop in order to verify the output
+    for(int i = 0; i < N; i++){
+        for(int j = 0; j < N; j++){
+            cout << h_C[i*N + j] << "\t";
+        }
+        cout << endl;
+    }
+
+
 
     cudaFree(d_A);
     cudaFree(d_B);

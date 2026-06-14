@@ -1,0 +1,1 @@
+In this repo, I will be reading PMPP chapter 3,4,5,6 which basically consists of different optimization techniques

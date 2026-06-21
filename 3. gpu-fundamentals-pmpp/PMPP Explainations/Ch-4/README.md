@@ -1,0 +1,1 @@
+Here's my understanding of chapter 4

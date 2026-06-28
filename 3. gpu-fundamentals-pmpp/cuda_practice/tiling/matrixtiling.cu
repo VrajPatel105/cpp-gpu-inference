@@ -98,5 +98,32 @@ int main(){
     dim3 gridDim(N / TILE_WIDTH, N / TILE_WIDTH);
     optimizedMatmul<<<gridDim, blockDim>>>(d_A, d_B, d_C, N);
 
+    cudaMemcpy(h_C, d_C, sizeof(float) * 16, cudaMemcpyDeviceToHost);
+
+    for(int i = 0; i<16; i++){
+        cout << "index i  : " << i << " --> " << h_C[i] << endl;
+    }
+
 
 }
+
+// Output : 
+
+// vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ nvcc tiling/matrixtiling.cu -o build/matrixtiling
+// vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ ./build/matrixtiling
+// index i  : 0 --> 90
+// index i  : 1 --> 100
+// index i  : 2 --> 110
+// index i  : 3 --> 120
+// index i  : 4 --> 202
+// index i  : 5 --> 228
+// index i  : 6 --> 254
+// index i  : 7 --> 280
+// index i  : 8 --> 314
+// index i  : 9 --> 356
+// index i  : 10 --> 398
+// index i  : 11 --> 440
+// index i  : 12 --> 426
+// index i  : 13 --> 484
+// index i  : 14 --> 542
+// index i  : 15 --> 600

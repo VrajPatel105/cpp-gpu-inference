@@ -56,7 +56,13 @@ __global__ void advanceMatrixTiling(float* A, float* B, float* P, int N){ // mai
     // row and col in cuda is simply : col is horizontal -> x and row is vertical -> y. 
     // This is just initializing the vars. badge X TILE_WIDTH + offset 
     // Question : What is badge here? is it simply the jumps needed to skip a big chunk? meainng skipping the rows (since it's flat indexed array internally?)
-    // Answer : 
+
+    // Answer : The badge isn't the jump — the badge is the thread's coordinate, and the jump is what you compute from it. Break row = by*TILE_WIDTH + ty into its two badge pieces:
+    // by = which block-row am I in (0 or 1 here). Multiply by TILE_WIDTH → that's the "skip whole blocks" jump you're sensing.
+    // ty = which row inside my block (0 or 1). That's the offset.
+
+    // So badge = the raw (by, ty) identity; the multiplication turns it into a row number. "Badge × TILE_WIDTH + offset" = "skip the blocks above me, then step down to my row." You had the right instinct, just name it precisely: badge is who I am, not the jump.
+    
     int row = by * TILE_WIDTH + ty;
     int col = bx * TILE_WIDTH + tx;
 

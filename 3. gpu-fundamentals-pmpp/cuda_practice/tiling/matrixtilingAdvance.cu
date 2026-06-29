@@ -84,14 +84,13 @@ int main(){
     float *d_A, *d_B, *d_result;
 
     // allocate the memory
-    cudaMalloc(&h_A, sizeof(float) * 16);
-    cudaMalloc(&h_B, sizeof(float) * 16);
-    cudaMalloc(&h_result, sizeof(float) * 16);
+    cudaMalloc(&d_A, sizeof(float) * 16);
+    cudaMalloc(&d_B, sizeof(float) * 16);
+    cudaMalloc(&d_result, sizeof(float) * 16);
 
     // transfer the memory from host to device
     cudaMemcpy(d_A, h_A, sizeof(float) * 16, cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, h_B, sizeof(float) * 16, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_result, h_result, sizeof(float) * 16, cudaMemcpyHostToDevice);
 
     // define the num blocks and threads
     dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
@@ -109,3 +108,23 @@ int main(){
     return 0;
 
 }
+
+// output : 
+// vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ nvcc tiling/matrixtilingAdvance.cu -o build/matrixtilingadvance
+// vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ ./build/matrixtilingadvance
+// i = 0 -> 1
+// i = 1 -> 2
+// i = 2 -> 3
+// i = 3 -> 4
+// i = 4 -> 5
+// i = 5 -> 6
+// i = 6 -> 7
+// i = 7 -> 8
+// i = 8 -> 9
+// i = 9 -> 10
+// i = 10 -> 11
+// i = 11 -> 12
+// i = 12 -> 13
+// i = 13 -> 14
+// i = 14 -> 15
+// i = 15 -> 16

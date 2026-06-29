@@ -55,7 +55,7 @@ __global__ void optimizedMatmul(float* A, float* B, float *P, int N){
         __syncthreads();
 
     }
-    P[row*N + col] = Pvalue;;
+    P[row*N + col] = Pvalue;
 
 }
 

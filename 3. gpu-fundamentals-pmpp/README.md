@@ -24,6 +24,10 @@
 
 9. Currently Watching this course (as of 1st June 2026) : https://youtu.be/86FAWCzIe_4?si=ujAjK0O5_OY-NGrq
 
+10. Again back to reading PMPP book. (so far from chapter 1 to 6)
+
+11. Reading this blog : https://siboehm.com/articles/22/CUDA-MMM
+
 ## Hands-on
 - Set up CUDA environment (nvcc + deviceQuery on RTX 4070)
 - Hello-world kernel: print thread/block IDs to internalize execution hierarchy

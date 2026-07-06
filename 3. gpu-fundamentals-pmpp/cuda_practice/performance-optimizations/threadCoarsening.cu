@@ -1,3 +1,7 @@
+// This code covers implementation of thread coarsening 
+
+// NOTE : I also have a handtrace for thread coarsening covered. please read the readme. 
+
 #include <iostream>
 #include <cuda.h>
 using namespace std;

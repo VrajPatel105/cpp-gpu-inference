@@ -3,7 +3,7 @@
 using namespace std;
 
 #define TILE_WIDTH 2
-#define COARSE_FACTOR 2
+#define COARSE_FACTOR 2 // the coarse factor
 
 __global__ void coarsenedMatrixTiling(float* A, float* B, float* P, int N){
 
@@ -14,30 +14,38 @@ __global__ void coarsenedMatrixTiling(float* A, float* B, float* P, int N){
 
     int row = by * TILE_WIDTH + ty;
     // base column: where this block's *first* strip starts.
-    // each subsequent strip (c = 1, 2, ...) is added on top of this inside the loop below.
+    // colStart var -> keeps track of what the block's first strip was
     int colStart = bx * TILE_WIDTH * COARSE_FACTOR + tx;
 
+    // defining the shared memory
     __shared__ float Mds[TILE_WIDTH][TILE_WIDTH];
     __shared__ float Nds[TILE_WIDTH][TILE_WIDTH];
 
-    // one accumulator per column this thread owns, all alive at once.
-    // this array, sitting in registers, IS the register-pressure cost from 6.3.
+    
+    // a Pavalue array that will store per thread output. This means, this is simply a register for that thread.
     float Pvalue[COARSE_FACTOR];
-    for (int c = 0; c < COARSE_FACTOR; ++c) Pvalue[c] = 0.0f;
+    for (int c = 0; c < COARSE_FACTOR; ++c) Pvalue[c] = 0.0f; // filling the entire value with 0 floating point
 
-    for (int ph = 0; ph < N / TILE_WIDTH; ++ph) {
+    for (int ph = 0; ph < N / TILE_WIDTH; ++ph) { // main phase loop
 
-        // A's tile does NOT depend on which output column we're on,
+        // A's tile does NOT depend on which output column we're on, (this is purely design based. we can also go for row to keep them fixed isntead)
+        // in general, row is what is being reused over and over again and col is something that we need to fetch it fresh.
         // so it loads exactly once per phase, same as the non-coarsened kernel.
         Mds[ty][tx] = A[row*N + (ph*TILE_WIDTH + tx)];
 
         // B's tile DOES depend on the column, so we loop over the columns
         // this thread owns, reloading Nds fresh for each one.
+
+        // Since Nds is changing values every iteration (because we have to change cols),
+        // we have to get fresh values — and to get those fresh values we run this loop,
+        // which simply overwrites the same Nds buffer every time.
+        // (Reuse over time, not growth: Nds never gets bigger, its contents just get replaced per strip.)
+
         for (int c = 0; c < COARSE_FACTOR; ++c) {
 
             int col = colStart + c * TILE_WIDTH;
 
-            // corner-turned load, same formula as your verified kernel,
+            // corner-turned load,
             // just using this iteration's col instead of a fixed one.
             Nds[tx][ty] = B[col*N + (ph*TILE_WIDTH + tx)];
 
@@ -52,6 +60,7 @@ __global__ void coarsenedMatrixTiling(float* A, float* B, float* P, int N){
     }
 
     // write out all COARSE_FACTOR results this thread computed
+    // moving the finished results out of the thread's private registers into the actual output matrix in global memory
     for (int c = 0; c < COARSE_FACTOR; ++c) {
         int col = colStart + c * TILE_WIDTH;
         P[row*N + col] = Pvalue[c];

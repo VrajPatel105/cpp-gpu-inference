@@ -30,7 +30,7 @@ __global__ void coarsenedMatrixTiling(float* A, float* B, float* P, int N){
 
             int col = colStart + c * TILE_WIDTH;
 
-            Nds[tx][ty] = B[col*N + (ph*TILE_WIDTH + tx)];
+            Nds[ty][tx] = B[(ph*TILE_WIDTH + ty)*N + col];
 
             __syncthreads();
 

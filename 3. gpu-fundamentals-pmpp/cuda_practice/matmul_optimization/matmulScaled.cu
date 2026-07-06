@@ -94,3 +94,12 @@ int main(){
 
     return 0;
 }
+
+// output : 
+
+// vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ nvcc matmul_optimization/matmulScaled.
+// cu -o build/naive_matmul_scaled
+// vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ ./build/naive_matmul_scaled
+// Kernel time: 2.56067 ms
+// C[0][0] = 31555
+// C[N-1][N-1] = 31402

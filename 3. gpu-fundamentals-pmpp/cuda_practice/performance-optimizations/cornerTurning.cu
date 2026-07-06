@@ -5,7 +5,7 @@ using namespace std;
 
 #define TILE_WIDTH 2 
 
-__global__ void advanceMatrixTiling(float* A, float* B, float* P, int N){ 
+__global__ void CornerTurning(float* A, float* B, float* P, int N){ 
 
     int bx = blockIdx.x;
     int by = blockIdx.y;
@@ -57,7 +57,7 @@ int main(){
     // define the num blocks and threads
     dim3 blockDim(TILE_WIDTH, TILE_WIDTH);
     dim3 gridDim(N / TILE_WIDTH, N / TILE_WIDTH);
-    advanceMatrixTiling<<<gridDim, blockDim>>>(d_A, d_B, d_result, N);
+    CornerTurning<<<gridDim, blockDim>>>(d_A, d_B, d_result, N);
 
     // transferring the resuling mem from d_result to h_result (device to host)
     cudaMemcpy(h_result, d_result, sizeof(float) * 16, cudaMemcpyDeviceToHost);

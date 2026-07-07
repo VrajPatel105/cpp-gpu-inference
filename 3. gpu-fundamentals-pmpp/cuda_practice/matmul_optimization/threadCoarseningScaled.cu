@@ -87,7 +87,7 @@ int main(){
     }
 
     dim3 threadsPerBlock(TILE_WIDTH, TILE_WIDTH);
-    dim3 numBlocks(N/(TILE_WIDTH*COARSE_FACTOR), N/(TILE_WIDTH*COARSE_FACTOR));
+    dim3 numBlocks(N/(TILE_WIDTH*COARSE_FACTOR), N/TILE_WIDTH);
 
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -126,6 +126,6 @@ int main(){
 // vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ nvcc matmul_optimization/threadCoarseningScaled.cu -o build/thread_coarsening_scaled
 // vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ ./build/thread_coarsening_scaled
 
-// Kernel time: 1.20531 ms
+// Kernel time: 1.98931 ms
 // C[0][0] = 1024
-// C[N-1][N-1] = 0
+// C[N-1][N-1] = 1024

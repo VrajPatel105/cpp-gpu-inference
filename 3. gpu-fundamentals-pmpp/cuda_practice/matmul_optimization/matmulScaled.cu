@@ -31,8 +31,8 @@ int main(){
     srand(time(NULL));
 
     for(size_t i = 0; i < size; i++){
-        h_A[i] = rand() % 10 + 1;
-        h_B[i] = rand() % 10 + 1;
+        h_A[i] = 1.0f;
+        h_B[i] = 1.0f;
     }
 
     float *d_A, *d_B, *d_C;
@@ -100,6 +100,7 @@ int main(){
 // vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ nvcc matmul_optimization/matmulScaled.
 // cu -o build/naive_matmul_scaled
 // vrajpatel@Vraj:/mnt/c/My Projects/Deep Learning Projects/cpp-gpu-inference/3. gpu-fundamentals-pmpp/cuda_practice$ ./build/naive_matmul_scaled
-// Kernel time: 2.56067 ms
-// C[0][0] = 31555
-// C[N-1][N-1] = 31402
+
+// Kernel time: 2.49312 ms
+// C[0][0] = 1024
+// C[N-1][N-1] = 1024

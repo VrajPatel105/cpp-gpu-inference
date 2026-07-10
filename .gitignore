@@ -2,3 +2,5 @@ build/
 *.exe
 venv
 triton-env
+venv312
+__pycache__

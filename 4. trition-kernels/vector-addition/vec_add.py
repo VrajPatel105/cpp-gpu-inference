@@ -1,51 +1,69 @@
 # vector addition triton kernel. 
-
-# The code is directly written / understood from official docs. "https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html"
-
 import torch
 import triton
-
 import triton.language as tl
 
-DEVICE = "cuda"
+# select device
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# defining the actual kernel
 @triton.jit
 def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
 
+    block_start = pid * BLOCK_SIZE
+
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
+    # load data from dram
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    y = tl.load(y_ptr + offsets, mask=mask, other=0.0)
+
     output = x + y
 
+    # writing the data back to dram
     tl.store(output_ptr + offsets, output, mask=mask)
 
-# creating a helper function to : 
-# 1. allocate the z tensor 
-# 2. enqueue the above kernel with appropriate grid/block sizes
 
-def add(x: torch.Tensor, y:torch.Tensor):
-
+def add(x, y):
+    # pre allocate the output -> making the z tensor in the mem in existance
     output = torch.empty_like(x)
-    assert x.device == DEVICE and y.device == DEVICE and output.device == DEVICE 
-    n_elements = output.numel()
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    # making sure that the tensors are on the same device
+    assert x.device == y.device
+    assert x.is_cuda and y.is_cuda, "Triton requires CUDA tensors"
 
-    add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
+    # defining our launch grid
+    n_elements = output.numel()  # this gives the total number of numbers in that tensor
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    add_kernel[grid](
+        x,
+        y,
+        output,
+        n_elements,
+        BLOCK_SIZE=1024
+    )
 
     return output
 
-torch.manual_seed(0)
-size = 98432
-x = torch.rand(size, device=DEVICE)
-y = torch.rand(size, device=DEVICE)
-output_torch = x + y
-output_triton = add(x, y)
-print(output_torch)
-print(output_triton)
-print(f'The maximum difference between torch and triton is '
-      f'{torch.max(torch.abs(output_torch - output_triton))}')
+
+def run_add_kernel(size, atol=1e-3, rtol=1e-3, device=DEVICE):
+    torch.manual_seed(42)
+    x = torch.randn(size, device=device)
+    y = torch.randn(size, device=device)
+
+    # define output vars
+    z_tri = add(x, y)
+    z_ref = x + y  # this is for us to compare the z_tri (triton output) with this reference 'pytorch' calculations
+
+    # compare
+    torch.testing.assert_close(z_tri, z_ref, atol=atol, rtol=rtol)
+    print("Passed!!")
+
+
+if __name__ == "__main__":
+    if not torch.cuda.is_available():
+        print("No CUDA GPU available")
+    run_add_kernel(size=4096)

@@ -98,4 +98,4 @@ if __name__ == "__main__":
     run_add_kernel(size=4096)
 
 # output 
-Passed!!
+# Passed!!

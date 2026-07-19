@@ -1,3 +1,32 @@
+# summary that i wrote on my own (it's a walkthrough)
+
+# walking through element 2049:
+#
+# main calls add(), which launches add_kernel.
+#
+# pid = 2 handles it, because pid = 1 only covers 1024 to 2047.
+# block_start = 2 * BLOCK_SIZE = 2 * 1024 = 2048
+# offsets = block_start + tl.arange(0, BLOCK_SIZE)
+#         = 2048 + [0, 1, ... 1023]
+#         = [2048, 2049, ... 3071]      (3072 belongs to pid = 3, arange excludes the end)
+# so element 2049 is lane 1 inside this block.
+#
+# mask = offsets < n_elements -> everything is under 4096 here, so it's all True.
+# mask is a bool vector, one True/False per lane.
+#
+# x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+# x_ptr + offsets gives 1024 addresses, but tl.load goes and reads them,
+# so x comes back as the actual 1024 values sitting in registers. not addresses.
+# same for y.
+#
+# x + y adds them elementwise, all 1024 lanes at once, still in registers.
+#
+# tl.store(output_ptr + offsets, output, mask=mask)
+# writes the results back to DRAM at the same offsets we loaded from,
+# so index 2048 to 3071 of output now holds the final values.
+
+
+
 # vector addition triton kernel. 
 import torch
 import triton
@@ -67,3 +96,6 @@ if __name__ == "__main__":
     if not torch.cuda.is_available():
         print("No CUDA GPU available")
     run_add_kernel(size=4096)
+
+# output 
+Passed!!

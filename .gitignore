@@ -5,3 +5,4 @@ triton-env
 venv312
 __pycache__
 ./vscode
+.vscode

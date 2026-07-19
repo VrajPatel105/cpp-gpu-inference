@@ -10,6 +10,7 @@
 import torch
 import triton
 import triton.language as tl
+from triton.testing import do_bench
 
 # device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -127,9 +128,29 @@ def run_softmax(size, atol=1e-3, rtol=1e-3, device=DEVICE):
     print("Passed!!")
 
 
+def benchmark(n_rows=1823, widths=(128, 781, 1024, 2048, 4096), device=DEVICE):
+    print(f"{'n_cols':>8} {'triton (ms)':>13} {'torch (ms)':>12} {'speedup':>9}")
+
+    for n_cols in widths:
+        arr = torch.randn((n_rows, n_cols), device=device)
+
+        # correctness first - a fast wrong kernel is worthless
+        torch.testing.assert_close(
+            softmax(arr), torch.softmax(arr, axis=1), atol=1e-3, rtol=1e-3
+        )
+
+        tri_ms = do_bench(lambda: softmax(arr), warmup=25, rep=100, return_mode="mean")
+        tor_ms = do_bench(lambda: torch.softmax(arr, axis=1), warmup=25, rep=100, return_mode="mean")
+
+        print(f"{n_cols:>8} {tri_ms:>13.4f} {tor_ms:>12.4f} {tor_ms / tri_ms:>8.2f}x")
+
+
 if __name__ == "__main__":
 
     run_softmax(size=(1823,781))
+    print(torch.cuda.get_device_capability())
+    benchmark()
+
 
 # output
 
@@ -152,3 +173,9 @@ if __name__ == "__main__":
 #        device='cuda:0')
 # Comparing both
 # Passed!!
+#   n_cols   triton (ms)   torch (ms)   speedup
+#      128        0.0125       0.0114     0.91x
+#      781        0.0227       0.0249     1.10x
+#     1024        0.0262       0.0270     1.03x
+#     2048        0.0463       0.0825     1.78x
+#     4096        0.0912       0.1116     1.22x

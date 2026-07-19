@@ -15,8 +15,36 @@ import triton.language as tl
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # kernel
-def softmax_kernel():
-    pass
+@triton.jit
+def softmax_kernel(input_ptr, output_ptr, input_stride, output_stride, n_cols, BLOCK_SIZE: tl.constexpr):
+
+    pid = tl.program_id(axis=0)
+
+    row_start = pid * input_stride
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    mask = col_offsets < n_cols
+
+    offsets = row_start + col_offsets 
+
+    out_offsets = pid * output_stride + col_offsets
+
+    row = tl.load(input_ptr + offsets, mask=mask, other=float("-inf"))
+
+    # 1. m - max(row)
+    m = tl.max(row, axis=0)
+
+    # 2. s = row - m
+    s = row - m
+
+    # 3. e - exp(s)
+    e = tl.exp(s)
+
+    # 4. out = e / sum(e)
+    den = tl.sum(e, axis=0)
+    out = e / den
+
+    tl.store(output_ptr + out_offsets, out, mask=mask)
+
 
 # function
 def softmax(arr):

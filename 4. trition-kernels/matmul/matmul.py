@@ -13,29 +13,38 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, M, N, K,
     pid_x = tl.program_id(axis=0)
     pid_y = tl.program_id(axis=1)
     # 2. offs_m, offs_n, offs_k  — three arange vectors
-    offs_m = pid_x + BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_y + BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_m = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    # 3. build 2D pointer blocks for A and B using [:, None] / [None, :]
-    row_a = offs_m[:, None] * stride_am
-    col_a = offs_k[None, :] * stride_ak
-
-    a_ptrs = row_a * stride_am + col_a * stride_ak
+    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
     # 4. accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    # 5. for k in range(0, tl.cdiv(K, BLOCK_K)):
-    #        load a tile, load b tile
-    #        accumulator += tl.dot(a, b)
-    #        advance both pointers along K
-    # 6. store accumulator to C with a 2D mask
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
-    pass
 
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        mask_a = (offs_m[:, None] < M) & (offs_k[None, :] + k * BLOCK_K < K)
+        mask_b = (offs_k[:, None] + k * BLOCK_K < K) & (offs_n[None, :] < N)
+
+        a_tile = tl.load(a_ptrs, mask=mask_a, other=0.0)
+        b_tile = tl.load(b_ptrs, mask=mask_b, other=0.0)
+        accumulator += tl.dot(a_tile, b_tile, allow_tf32=False)
+
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
+
+    c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    mask_c = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    tl.store(c_ptrs, accumulator, mask=mask_c)
 
 def matmul(x,y, M, N, K):
 
     output = torch.empty((M, N), device=x.device, dtype=x.dtype)
-    assert x.is_cuda , "Triton requires CUDA tensors"
+    assert x.is_cuda and y.is_cuda , "Triton requires CUDA tensors"
+
+    BLOCK_M = 64
+    BLOCK_N = 64
 
     grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
 
@@ -69,3 +78,7 @@ if __name__ == "__main__":
     if not torch.cuda.is_available():
         print("No CUDA GPU available")
     run_matmul_kernel(512, 384, 256)
+
+# output 
+# (mlenv) vraj@Vraj:/mnt/c/dev/projects/cpp-gpu-inference/4. trition-kernels/matmul$ python matmul.py
+# Passed!!

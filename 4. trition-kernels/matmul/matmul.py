@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+torch.backends.cuda.matmul.allow_tf32 = False
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -86,10 +87,42 @@ def run_matmul_kernel(M, N, K, atol=1e-3, rtol=1e-3, device=DEVICE):
     print("Passed!!")
 
 
+# Peak FP32 for the MOBILE RTX 5080 (~32 TFLOP/s reference).
+PEAK_TFLOPS = 32.0
+
+def benchmark():
+    sizes = [512, 1024, 2048, 4096]
+    print(f"{'Size':>6} | {'Triton':>10} | {'cuBLAS':>10} | {'Tri %pk':>8} | {'cuB %pk':>8}")
+    print("-" * 56)
+
+    for n in sizes:
+        M = N = K = n
+        x = torch.randn((M, K), device=DEVICE, dtype=torch.float32)
+        y = torch.randn((K, N), device=DEVICE, dtype=torch.float32)
+
+        # warmup: fire the autotune compile once so it isn't timed
+        matmul(x, y, M, N, K)
+        torch.matmul(x, y)
+
+        ms_tri = triton.testing.do_bench(lambda: matmul(x, y, M, N, K))
+        ms_cub = triton.testing.do_bench(lambda: torch.matmul(x, y))
+
+        flops = 2 * M * N * K
+        tflops_tri = flops / (ms_tri * 1e-3) / 1e12
+        tflops_cub = flops / (ms_cub * 1e-3) / 1e12
+
+        print(f"{n:>6} | {tflops_tri:>10.2f} | {tflops_cub:>10.2f} | "
+            f"{tflops_tri / PEAK_TFLOPS * 100:>7.1f}% | "
+            f"{tflops_cub / PEAK_TFLOPS * 100:>7.1f}%")
+
 if __name__ == "__main__":
     if not torch.cuda.is_available():
         print("No CUDA GPU available")
-    run_matmul_kernel(512, 384, 256)
+    else:
+        run_matmul_kernel(512, 384, 256) 
+        print()
+        benchmark()
+
 
 # output 
 # Triton output:
@@ -112,3 +145,10 @@ if __name__ == "__main__":
 #        device='cuda:0')
 # Max abs diff: 4.57763671875e-05
 # Passed!!
+
+#   Size |     Triton |     cuBLAS |  Tri %pk |  cuB %pk
+# --------------------------------------------------------
+#    512 |       8.77 |       8.24 |    27.4% |    25.7%
+#   1024 |      15.95 |      16.64 |    49.9% |    52.0%
+#   2048 |      19.30 |      21.78 |    60.3% |    68.1%
+#   4096 |      16.53 |      20.32 |    51.7% |    63.5%

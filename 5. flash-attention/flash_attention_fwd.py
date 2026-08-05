@@ -51,13 +51,15 @@ def flash_attention_kernel(
         # S = num / tl.sqrt(head_dim.to(tl.float32))
         S = num / (head_dim ** 0.5) # replaced the above one with this new one for precision issues
 
+        S = tl.where(offs_n[None, :] < seq_len, S, float('-inf')) # by this we are replacing the mask values from 0 to -inf cuz there shoujdl be no involvement of 0
+
         # compute the running vars 
         # 1. rowmax 
         rowmax = tl.max(S, axis=1)
         # 2. max
         m_new = tl.maximum(m, rowmax)
         # 3. rowsum
-        tilde_p = tl.exp(S - m_new)
+        tilde_p = tl.exp(S - m_new[:, None])
         rowsum = tl.sum(tilde_p, axis=1) 
         l_new = tl.exp(m - m_new) * l + rowsum
 
@@ -131,14 +133,13 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
 
     result = torch.allclose(output_flash_attention, output_torch, atol=1e-2, rtol=1e-3)
     diff = (output_flash_attention - output_torch).abs()
-    print("max abs diff:", diff.max().item())
-    print("mean abs diff:", diff.mean().item())
+
 
     return result
 
 # main
 if __name__ == "__main__":
-    outupt = run_fa_fwd(2,4,512,64)
+    outupt = run_fa_fwd(2,4,500,64)
     print(outupt)
 
 

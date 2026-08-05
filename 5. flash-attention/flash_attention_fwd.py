@@ -153,10 +153,51 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
     return result
 
 
+# Peak FP32 for the MOBILE RTX 5080 (~32 TFLOP/s reference).
+PEAK_TFLOPS = 49.15
+def benchmark(batch, heads, head_dim):
+
+    sizes = [512, 1024, 2048, 4096, 8192]
+    print(f"{'Size':>6} | {'Triton':>10} | {'cuBLAS':>10} | {'Tri %pk':>8} | {'cuB %pk':>8} | {'Tri MB':>8} | {'cuB MB':>8}")
+    print("-" * 90)
+
+    for n in sizes:
+        Q = torch.rand(batch, heads, n, head_dim, device=DEVICE, dtype=torch.float16)
+        K = torch.rand(batch, heads, n, head_dim, device=DEVICE, dtype=torch.float16)
+        V = torch.rand(batch, heads, n, head_dim, device=DEVICE, dtype=torch.float16)
+
+        # warmup (also lets autotune settle on a config for this shape)
+        flash_attention_forward(Q, K, V)
+        torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=True)
+        torch.cuda.synchronize()
+
+        # --- Triton: time + peak memory ---
+        torch.cuda.reset_peak_memory_stats()
+        ms_tri = triton.testing.do_bench(lambda: flash_attention_forward(Q, K, V))
+        mem_tri = torch.cuda.max_memory_allocated() / (1024 ** 2)  # MB
+
+        # --- SDPA: time + peak memory ---
+        torch.cuda.reset_peak_memory_stats()
+        ms_cub = triton.testing.do_bench(lambda: torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=True))
+        mem_cub = torch.cuda.max_memory_allocated() / (1024 ** 2)  # MB
+
+        # attention FLOPs: QK^T + PV, each 2*n*n*head_dim, times batch*heads
+        flops_full = 4 * batch * heads * n * n * head_dim      # what Triton actually computes
+        flops_causal = 2 * batch * heads * n * n * head_dim     # what SDPA actually computes (approx)
+
+        tflops_tri = flops_full / (ms_tri * 1e-3) / 1e12
+        tflops_cub = flops_causal / (ms_cub * 1e-3) / 1e12
+        print(f"{n:>6} | {tflops_tri:>10.2f} | {tflops_cub:>10.2f} | "
+              f"{tflops_tri / PEAK_TFLOPS * 100:>7.1f}% | "
+              f"{tflops_cub / PEAK_TFLOPS * 100:>7.1f}% | "
+              f"{mem_tri:>7.1f} | {mem_cub:>7.1f}")
+        
 # main
 if __name__ == "__main__":
     outupt = run_fa_fwd(2,4,512,64)
     print(outupt)
+    print("\n Benchmark testing \n")
+    benchmark(2,4,64)
 
 
 # output 
@@ -172,3 +213,15 @@ if __name__ == "__main__":
 # max abs diff: 0.00048828125
 # mean abs diff: 0.00017392635345458984
 # True
+
+
+# # benchmark results 
+#  Benchmark testing 
+
+#   Size |     Triton |     cuBLAS |  Tri %pk |  cuB %pk |   Tri MB |   cuB MB
+# ------------------------------------------------------------------------------------------
+#    512 |      18.44 |      11.36 |    37.5% |    23.1% |   258.0 |   258.0
+#   1024 |      30.13 |      21.03 |    61.3% |    42.8% |   260.0 |   260.0
+#   2048 |      40.40 |      36.69 |    82.2% |    74.7% |   264.0 |   264.1
+#   4096 |      46.19 |      52.89 |    94.0% |   107.6% |   272.0 |   272.1
+#   8192 |      46.78 |      62.98 |    95.2% |   128.1% |   288.0 |   288.3

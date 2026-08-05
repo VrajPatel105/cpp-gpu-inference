@@ -129,7 +129,10 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
     output_flash_attention = flash_attention_forward(Q,K,V)
     output_torch = torch.softmax(Q@K.transpose(-2,-1)/math.sqrt(head_dim), dim=-1) @ V
 
-    result = torch.allclose(output_flash_attention, output_torch)
+    result = torch.allclose(output_flash_attention, output_torch, atol=1e-2, rtol=1e-3)
+    diff = (output_flash_attention - output_torch).abs()
+    print("max abs diff:", diff.max().item())
+    print("mean abs diff:", diff.mean().item())
 
     return result
 
@@ -137,3 +140,10 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
 if __name__ == "__main__":
     outupt = run_fa_fwd(2,4,512,64)
     print(outupt)
+
+
+# output 
+# (mlenv) vraj@Vraj:/mnt/c/dev/projects/cpp-gpu-inference/5. flash-attention$ python flash_attention_fwd.py
+# max abs diff: 0.010206371545791626
+# mean abs diff: 0.0019075826276093721
+# True

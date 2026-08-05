@@ -55,9 +55,32 @@ def flash_attention_kernel(
         m_new = tl.maximum(m, rowmax)
         # 3. rowsum
         tilde_p = tl.exp(S - m_new)
-        rowsum = tl.sum(tilde_p) # here we dont need the axis args because the official doc says that if None provided then it will reduce allthe dims
+        rowsum = tl.sum(tilde_p, axis=1) 
         l_new = tl.exp(m - m_new) * l + rowsum
 
+        # now o
+        rescale_factor = tl.exp(m - m_new)
+        old_c = rescale_factor[:, None] * o # this broadcasts the per row scalar across head_dim
+        new_c = tl.dot(tilde_p, v_tile)
+        o_new = old_c + new_c
+
+        # update the new values to the running states (vars)
+        m = m_new
+        l = l_new
+        o = o_new
+
+    # now out of the loop
+    final_o = o / l[:, None]
+    final_l = m + tl.log(l)
+
+    # finally write the computed values back to hbm
+    o = final_o
+    l = final_l
+
+    # finally write o back to output 
+    o_ptrs = pid_batch * stride_ob + pid_head * stride_oh + offs_m[:, None] * stride_os + offs_d[None, :] * stride_od 
+    o_mask = offs_m[:, None] < seq_len
+    tl.store(o_ptrs, final_o, mask=o_mask)
 
 
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):

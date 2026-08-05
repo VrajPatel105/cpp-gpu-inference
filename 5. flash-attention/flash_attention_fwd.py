@@ -7,8 +7,23 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # kernel
 @triton.jit
-def flash_attention_kernel():
-    pass
+def flash_attention_kernel(
+    Q, K, V, O,
+    stride_qb, stride_qh, stride_qs, stride_qd,
+    stride_kb, stride_kh, stride_ks, stride_kd,
+    stride_vb, stride_vh, stride_vs, stride_vd,
+    stride_ob, stride_oh, stride_os, stride_od,
+    seq_len, head_dim, 
+    BLOCK_M : tl.constexpr,
+    BLOCK_N : tl.constexpr
+):
+    pid_batch = tl.program_id(axis=0)
+    pid_head = tl.program_id(axis=1)
+    pid_m = tl.program_id(axis=2)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M) 
+    offs_d = 
+    offs_q = pid_batch * stride_qb + pid_head * stride_qh + offs_m * stride_qs + offs_d * stride_qd
 
 
 

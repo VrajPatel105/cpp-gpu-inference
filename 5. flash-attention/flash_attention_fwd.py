@@ -51,8 +51,13 @@ def flash_attention_kernel(
         # S = num / tl.sqrt(head_dim.to(tl.float32))
         S = num / (head_dim ** 0.5) # replaced the above one with this new one for precision issues
 
-        S = tl.where(offs_n[None, :] < seq_len, S, float('-inf')) # by this we are replacing the mask values from 0 to -inf cuz there shoujdl be no involvement of 0
+        # S = tl.where(offs_n[None, :] < seq_len, S, float('-inf')) # by this we are replacing the mask values from 0 to -inf cuz there shoujdl be no involvement of 0
+        # now we replace the above with padding + causal mask together 
 
+        padding_ok = offs_n[None, :] < seq_len
+        causal_ok = offs_m[:, None] >= offs_n[None, :]
+        mask = padding_ok & causal_ok
+        S = tl.where(mask, S, float('-inf'))
         # compute the running vars 
         # 1. rowmax 
         rowmax = tl.max(S, axis=1)
@@ -122,29 +127,34 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
 
     torch.manual_seed(42)
 
-    # initialize the Q, K and V tensors
     Q = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE)
     K = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE)
     V = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE)
 
-    # call the wrapper function
-    output_flash_attention = flash_attention_forward(Q,K,V)
-    output_torch = torch.softmax(Q@K.transpose(-2,-1)/math.sqrt(head_dim), dim=-1) @ V
+    output_flash_attention = flash_attention_forward(Q, K, V)
+
+    # causal reference — PyTorch's built-in, is_causal=True applies the
+    # same "key position <= query position" rule you just added
+    output_torch = torch.nn.functional.scaled_dot_product_attention(
+        Q, K, V, is_causal=True
+    )
+
+    diff = (output_flash_attention - output_torch).abs()
+    print("max abs diff:", diff.max().item())
+    print("mean abs diff:", diff.mean().item())
 
     result = torch.allclose(output_flash_attention, output_torch, atol=1e-2, rtol=1e-3)
-    diff = (output_flash_attention - output_torch).abs()
-
-
     return result
+
 
 # main
 if __name__ == "__main__":
-    outupt = run_fa_fwd(2,4,500,64)
+    outupt = run_fa_fwd(2,4,512,64)
     print(outupt)
 
 
 # output 
 # (mlenv) vraj@Vraj:/mnt/c/dev/projects/cpp-gpu-inference/5. flash-attention$ python flash_attention_fwd.py
-# max abs diff: 0.010206371545791626
-# mean abs diff: 0.0019075826276093721
+# max abs diff: 0.0006583929061889648
+# mean abs diff: 0.00033916771644726396
 # True

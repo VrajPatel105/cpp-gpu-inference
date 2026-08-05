@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import math
 
 # device 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -13,7 +14,8 @@ def flash_attention_kernel(
     stride_kb, stride_kh, stride_ks, stride_kd,
     stride_vb, stride_vh, stride_vs, stride_vd,
     stride_ob, stride_oh, stride_os, stride_od,
-    seq_len, head_dim, 
+    seq_len,
+    head_dim : tl.constexpr, 
     BLOCK_M : tl.constexpr,
     BLOCK_N : tl.constexpr
 ):
@@ -46,7 +48,8 @@ def flash_attention_kernel(
 
         # compute S with the 1/root(d) scailing factor 
         num = tl.dot(q_tile, tl.trans(k_tile))
-        S = num / tl.sqrt(head_dim)
+        # S = num / tl.sqrt(head_dim.to(tl.float32))
+        S = num / (head_dim ** 0.5) # replaced the above one with this new one for precision issues
 
         # compute the running vars 
         # 1. rowmax 
@@ -85,8 +88,8 @@ def flash_attention_kernel(
 
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 
-    BLOCK_M = 128
-    BLOCK_N = 128
+    BLOCK_M = 64
+    BLOCK_N = 64
     
     # extracting the size for q k v tensors
     batch, num_heads, seq_len, head_dim = Q.shape
@@ -107,11 +110,15 @@ def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
         V.stride(0), V.stride(1), V.stride(2), V.stride(3),
         O.stride(0), O.stride(1), O.stride(2), O.stride(3),
         seq_len, head_dim,
-        BLOCK_M, BLOCK_N
+        BLOCK_M, BLOCK_N,
     )
+
+    return O
 
 
 def run_fa_fwd(batch, heads, seq_len, head_dim):
+
+    torch.manual_seed(42)
 
     # initialize the Q, K and V tensors
     Q = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE)
@@ -119,9 +126,14 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
     V = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE)
 
     # call the wrapper function
-    flash_attention_forward(Q,K,V)
+    output_flash_attention = flash_attention_forward(Q,K,V)
+    output_torch = torch.softmax(Q@K.transpose(-2,-1)/math.sqrt(head_dim), dim=-1) @ V
 
+    result = torch.allclose(output_flash_attention, output_torch)
+
+    return result
 
 # main
 if __name__ == "__main__":
-    run_fa_fwd(2,4,512,64)
+    outupt = run_fa_fwd(2,4,512,64)
+    print(outupt)

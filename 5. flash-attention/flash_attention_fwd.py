@@ -50,6 +50,7 @@ def flash_attention_kernel(
         num = tl.dot(q_tile, tl.trans(k_tile))
         # S = num / tl.sqrt(head_dim.to(tl.float32))
         S = num / (head_dim ** 0.5) # replaced the above one with this new one for precision issues
+        S = S.to(tl.float32) # trying to force it to produce fp32 
 
         # S = tl.where(offs_n[None, :] < seq_len, S, float('-inf')) # by this we are replacing the mask values from 0 to -inf cuz there shoujdl be no involvement of 0
         # now we replace the above with padding + causal mask together 
@@ -71,7 +72,7 @@ def flash_attention_kernel(
         # now o
         rescale_factor = tl.exp(m - m_new)
         old_c = rescale_factor[:, None] * o # this broadcasts the per row scalar across head_dim
-        new_c = tl.dot(tilde_p, v_tile)
+        new_c = tl.dot(tilde_p, v_tile.to(tl.float32)) # casting to fp32
         o_new = old_c + new_c
 
         # update the new values to the running states (vars)
@@ -105,7 +106,7 @@ def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
     assert Q.is_cuda and K.is_cuda and V.is_cuda , "Not CUDA Tensors -_-"
 
     # output tensor
-    O = torch.empty(batch, num_heads, seq_len, head_dim, device=DEVICE)
+    O = torch.empty(batch, num_heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
 
     # define the launchpad grid
     grid = (batch, num_heads, triton.cdiv(seq_len, BLOCK_M))
@@ -127,9 +128,9 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
 
     torch.manual_seed(42)
 
-    Q = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE)
-    K = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE)
-    V = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE)
+    Q = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    K = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    V = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
 
     output_flash_attention = flash_attention_forward(Q, K, V)
 

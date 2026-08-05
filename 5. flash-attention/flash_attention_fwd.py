@@ -13,7 +13,31 @@ def flash_attention_kernel():
 
 
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
-    pass
+
+    BLOCK_M = 128
+    BLOCK_N = 128
+    
+    # extracting the size for q k v tensors
+    batch, num_heads, seq_len, head_dim = Q.shape
+    assert K.shape == Q.shape and V.shape == Q.shape, "Q, K, V shape mismatch"
+
+    assert Q.is_cuda and K.is_cuda and V.is_cuda , "Not CUDA Tensors -_-"
+
+    # output tensor
+    O = torch.empty(batch, num_heads, seq_len, head_dim, device=DEVICE)
+
+    # define the launchpad grid
+    grid = (batch, num_heads, triton.cdiv(seq_len, BLOCK_M))
+
+    flash_attention_kernel[grid](
+        Q, K, V, O,
+        Q.stride(0), Q.stride(1), Q.stride(2), Q.stride(3),
+        K.stride(0), K.stride(1), K.stride(2), K.stride(3),
+        V.stride(0), V.stride(1), V.stride(2), V.stride(3),
+        O.stride(0), O.stride(1), O.stride(2), O.stride(3),
+        seq_len, head_dim,
+        BLOCK_M, BLOCK_N
+    )
 
 
 def run_fa_fwd(batch, heads, seq_len, head_dim):

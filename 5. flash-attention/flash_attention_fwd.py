@@ -22,8 +22,41 @@ def flash_attention_kernel(
     pid_m = tl.program_id(axis=2)
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M) 
-    offs_d = 
-    offs_q = pid_batch * stride_qb + pid_head * stride_qh + offs_m * stride_qs + offs_d * stride_qd
+    offs_d = tl.arange(0, head_dim)
+    q_ptrs = pid_batch * stride_qb + pid_head * stride_qh + offs_m[:, None] * stride_qs + offs_d[None, :] * stride_qd 
+    q_mask = offs_m[:, None] < seq_len
+    # finally loading q into mem
+    q_tile = tl.load(q_ptrs, mask=q_mask, other=0.0)
+
+    # now initializing the running states
+    m = tl.full((BLOCK_M,), value=-float('inf'), dtype=tl.float32)
+    l = tl.zeros((BLOCK_M,), dtype=tl.float32)
+    o = tl.zeros((BLOCK_M, head_dim), dtype=tl.float32)
+
+    for j in range(tl.cdiv(seq_len, BLOCK_N)):
+        offs_n = j * BLOCK_N + tl.arange(0, BLOCK_N)
+        k_ptrs = pid_batch * stride_kb + pid_head * stride_kh + offs_n[:, None] * stride_ks + offs_d[None, :] * stride_kd 
+        v_ptrs = pid_batch * stride_vb + pid_head * stride_vh + offs_n[:, None] * stride_vs + offs_d[None, :] * stride_vd 
+
+        k_mask = offs_n[:, None] < seq_len
+        v_mask = offs_n[:, None] < seq_len
+
+        k_tile = tl.load(k_ptrs, mask=k_mask, other=0.0)
+        v_tile = tl.load(v_ptrs, mask=v_mask, other=0.0)
+
+        # compute S with the 1/root(d) scailing factor 
+        num = tl.dot(q_tile, tl.trans(k_tile))
+        S = num / tl.sqrt(head_dim)
+
+        # compute the running vars 
+        # 1. rowmax 
+        rowmax = tl.max(S, axis=1)
+        # 2. max
+        m_new = tl.maximum(m, rowmax)
+        # 3. rowsum
+        tilde_p = tl.exp(S - m_new)
+        rowsum = tl.sum(tilde_p) # here we dont need the axis args because the official doc says that if None provided then it will reduce allthe dims
+        l_new = tl.exp(m - m_new) * l + rowsum
 
 
 

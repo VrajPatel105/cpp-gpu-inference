@@ -6,7 +6,16 @@ import math
 # device 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# kernel
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_M': 32, 'BLOCK_N': 32}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 64}, num_warps=4, num_stages=2),
+        triton.Config({'BLOCK_M': 64, 'BLOCK_N': 32}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_M': 32, 'BLOCK_N': 64}, num_warps=4, num_stages=3),
+        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 32}, num_warps=8, num_stages=2),
+    ],
+    key=['seq_len', 'head_dim'],
+)
 @triton.jit
 def flash_attention_kernel(
     Q, K, V, O,
@@ -96,9 +105,6 @@ def flash_attention_kernel(
 
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 
-    BLOCK_M = 64
-    BLOCK_N = 64
-    
     # extracting the size for q k v tensors
     batch, num_heads, seq_len, head_dim = Q.shape
     assert K.shape == Q.shape and V.shape == Q.shape, "Q, K, V shape mismatch"
@@ -109,7 +115,7 @@ def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
     O = torch.empty(batch, num_heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
 
     # define the launchpad grid
-    grid = (batch, num_heads, triton.cdiv(seq_len, BLOCK_M))
+    grid = lambda META: (batch, num_heads, triton.cdiv(seq_len, META['BLOCK_M']))
 
     flash_attention_kernel[grid](
         Q, K, V, O,
@@ -118,7 +124,6 @@ def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
         V.stride(0), V.stride(1), V.stride(2), V.stride(3),
         O.stride(0), O.stride(1), O.stride(2), O.stride(3),
         seq_len, head_dim,
-        BLOCK_M, BLOCK_N,
     )
 
     return O
@@ -155,7 +160,15 @@ if __name__ == "__main__":
 
 
 # output 
+
+# Before Autotune : 
 # (mlenv) vraj@Vraj:/mnt/c/dev/projects/cpp-gpu-inference/5. flash-attention$ python flash_attention_fwd.py
-# max abs diff: 0.0006583929061889648
-# mean abs diff: 0.00033916771644726396
+# max abs diff: 0.00048828125
+# mean abs diff: 0.00017583370208740234
+# True
+
+# After Autotune : 
+# (mlenv) vraj@Vraj:/mnt/c/dev/projects/cpp-gpu-inference/5. flash-attention$ python flash_attention_fwd.py
+# max abs diff: 0.00048828125
+# mean abs diff: 0.00017392635345458984
 # True

@@ -23,7 +23,7 @@ def flash_attention_kernel(
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M) 
     offs_d = tl.arange(0, head_dim)
-    q_ptrs = pid_batch * stride_qb + pid_head * stride_qh + offs_m[:, None] * stride_qs + offs_d[None, :] * stride_qd 
+    q_ptrs = Q + pid_batch * stride_qb + pid_head * stride_qh + offs_m[:, None] * stride_qs + offs_d[None, :] * stride_qd 
     q_mask = offs_m[:, None] < seq_len
     # finally loading q into mem
     q_tile = tl.load(q_ptrs, mask=q_mask, other=0.0)
@@ -35,8 +35,8 @@ def flash_attention_kernel(
 
     for j in range(tl.cdiv(seq_len, BLOCK_N)):
         offs_n = j * BLOCK_N + tl.arange(0, BLOCK_N)
-        k_ptrs = pid_batch * stride_kb + pid_head * stride_kh + offs_n[:, None] * stride_ks + offs_d[None, :] * stride_kd 
-        v_ptrs = pid_batch * stride_vb + pid_head * stride_vh + offs_n[:, None] * stride_vs + offs_d[None, :] * stride_vd 
+        k_ptrs = K + pid_batch * stride_kb + pid_head * stride_kh + offs_n[:, None] * stride_ks + offs_d[None, :] * stride_kd 
+        v_ptrs = V + pid_batch * stride_vb + pid_head * stride_vh + offs_n[:, None] * stride_vs + offs_d[None, :] * stride_vd 
 
         k_mask = offs_n[:, None] < seq_len
         v_mask = offs_n[:, None] < seq_len
@@ -78,7 +78,7 @@ def flash_attention_kernel(
     l = final_l
 
     # finally write o back to output 
-    o_ptrs = pid_batch * stride_ob + pid_head * stride_oh + offs_m[:, None] * stride_os + offs_d[None, :] * stride_od 
+    o_ptrs = O + pid_batch * stride_ob + pid_head * stride_oh + offs_m[:, None] * stride_os + offs_d[None, :] * stride_od 
     o_mask = offs_m[:, None] < seq_len
     tl.store(o_ptrs, final_o, mask=o_mask)
 

@@ -174,6 +174,45 @@ def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 
     return O, L
 
+def preprocess_kernel_forward(O: torch.Tensor, dO: torch.Tensor):
+
+    batch, num_heads, seq_len, head_dim = O.shape
+    assert O.shape == dO.shape, "Q, K, V shape mismatch"
+    assert O.is_cuda and dO.is_cuda, "Not CUDA Tensors -_-"
+
+    D = torch.empty(batch, num_heads, seq_len, device=DEVICE, dtype=torch.float16)
+
+    BLOCK_M = 64
+    grid = (batch, num_heads, triton.cdiv(seq_len, BLOCK_M))
+
+    preprocess_kernel[grid](
+    O, dO, D,
+    O.stride(0), O.stride(1), O.stride(2), O.stride(3),
+    dO.stride(0), dO.stride(1), dO.stride(2), dO.stride(3),
+    D.stride(0), D.stride(1), D.stride(2),
+    seq_len, head_dim, BLOCK_M,
+    )
+
+    return D
+
+
+def test_preprocess_kernel(batch, heads, seq_len, head_dim):
+    torch.manual_seed(0)
+    
+    O = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    dO = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+
+    D = preprocess_kernel_forward(O, dO).to(torch.float32)
+
+    D_ref = (O.float() * dO.float()).sum(dim=-1)
+
+    print("test preprocess kernel results  : \n ")
+    diff = (D - D_ref).abs()
+    print("max abs diff:", diff.max().item())
+    print("mean abs diff:", diff.mean().item())
+    result = torch.allclose(D, D_ref, atol=1e-2, rtol=1e-3)
+
+    return result
 
 def run_fa_fwd(batch, heads, seq_len, head_dim):
 
@@ -240,10 +279,12 @@ def benchmark(batch, heads, head_dim):
         
 # main
 if __name__ == "__main__":
-    outupt = run_fa_fwd(2,4,512,64)
-    print(outupt)
-    print("\n Benchmark testing \n")
-    benchmark(2,4,64)
+    output_run_fwd = run_fa_fwd(2,4,512,64)
+    print(output_run_fwd)
+    output_preprocess_kernel = test_preprocess_kernel(2,4,512,64)
+    print(output_preprocess_kernel)
+    # print("\n Benchmark testing \n")
+    # benchmark(2,4,64)
 
 
 # output 

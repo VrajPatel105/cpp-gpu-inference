@@ -18,11 +18,12 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 )
 @triton.jit
 def flash_attention_kernel(
-    Q, K, V, O,
+    Q, K, V, O, L,
     stride_qb, stride_qh, stride_qs, stride_qd,
     stride_kb, stride_kh, stride_ks, stride_kd,
     stride_vb, stride_vh, stride_vs, stride_vd,
     stride_ob, stride_oh, stride_os, stride_od,
+    stride_lb, stride_lh, stride_ls,
     seq_len,
     head_dim : tl.constexpr, 
     BLOCK_M : tl.constexpr,
@@ -102,6 +103,10 @@ def flash_attention_kernel(
     o_mask = offs_m[:, None] < seq_len
     tl.store(o_ptrs, final_o, mask=o_mask)
 
+    l_ptrs = L + pid_batch * stride_lb + pid_head * stride_lh + offs_m * stride_ls
+    l_mask = offs_m < seq_len
+    tl.store(l_ptrs, final_l, mask=l_mask)
+
 
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 
@@ -113,20 +118,22 @@ def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 
     # output tensor
     O = torch.empty(batch, num_heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    L = torch.empty(batch, num_heads, seq_len, device=DEVICE, dtype=torch.float16)
 
     # define the launchpad grid
     grid = lambda META: (batch, num_heads, triton.cdiv(seq_len, META['BLOCK_M']))
 
     flash_attention_kernel[grid](
-        Q, K, V, O,
+        Q, K, V, O, L,
         Q.stride(0), Q.stride(1), Q.stride(2), Q.stride(3),
         K.stride(0), K.stride(1), K.stride(2), K.stride(3),
         V.stride(0), V.stride(1), V.stride(2), V.stride(3),
         O.stride(0), O.stride(1), O.stride(2), O.stride(3),
+        L.stride(0), L.stride(1), L.stride(2),
         seq_len, head_dim,
     )
 
-    return O
+    return O, L
 
 
 def run_fa_fwd(batch, heads, seq_len, head_dim):
@@ -137,7 +144,7 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
     K = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
     V = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
 
-    output_flash_attention = flash_attention_forward(Q, K, V)
+    output_flash_attention_o, _ = flash_attention_forward(Q, K, V)
 
     # causal reference — PyTorch's built-in, is_causal=True applies the
     # same "key position <= query position" rule you just added
@@ -145,11 +152,11 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
         Q, K, V, is_causal=True
     )
 
-    diff = (output_flash_attention - output_torch).abs()
+    diff = (output_flash_attention_o - output_torch).abs()
     print("max abs diff:", diff.max().item())
     print("mean abs diff:", diff.mean().item())
 
-    result = torch.allclose(output_flash_attention, output_torch, atol=1e-2, rtol=1e-3)
+    result = torch.allclose(output_flash_attention_o, output_torch, atol=1e-2, rtol=1e-3)
     return result
 
 

@@ -122,14 +122,30 @@ def preprocess_kernel(
     head_dim: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
-    # 1. get pid_batch, pid_head, pid_m from program_id
     
+    # 1. get pid_batch, pid_head, pid_m from program_id
+    pid_batch = tl.program_id(axis=0)
+    pid_head = tl.program_id(axis=1)
+    pid_m = tl.program_id(axis=2)
     # 2. build offs_m, offs_d (same as forward's setup)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_d = tl.arange(0, head_dim)
     # 3. build o_ptrs and do_ptrs (same pattern as q_ptrs in forward)
+    o_ptrs = O + pid_batch * stride_ob + pid_head * stride_oh + offs_m[:, None] * stride_os + offs_d[None, :] * stride_od
+    o_mask = offs_m[:, None] < seq_len
+    do_ptrs = dO + pid_batch * stride_dob + pid_head * stride_doh + offs_m[:, None] * stride_dos + offs_d[None, :] * stride_dod
+    do_mask = offs_m[:, None] < seq_len
     # 4. load o_tile and do_tile (masked, other=0.0)
+    o_tile = tl.load(o_ptrs, mask=o_mask, other=0.0)
+    do_tile = tl.load(do_ptrs, mask=do_mask, other=0.0)
     # 5. elementwise multiply, then tl.sum along axis=1 to get D_row (shape BLOCK_M,)
+    prod = o_tile * do_tile
+    D_row = tl.sum(prod, axis=1)    
     # 6. build D_ptrs (1D, like your fixed l_ptrs — no offs_d needed)
+    D_ptrs = D + pid_batch * stride_Db + pid_head * stride_Dh + offs_m * stride_Ds
+    D_mask = offs_m < seq_len
     # 7. store D_row into D_ptrs, masked
+    tl.store(D_ptrs, D_row, mask=D_mask)
 
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 

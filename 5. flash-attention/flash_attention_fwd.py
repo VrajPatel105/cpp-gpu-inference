@@ -107,6 +107,29 @@ def flash_attention_kernel(
     l_mask = offs_m < seq_len
     tl.store(l_ptrs, final_l, mask=l_mask)
 
+#This kernel beolw precomputes D_i = rowsum(dO_i . O_i) for every row, once, up front. 
+# D_i is the per-row scalar the softmax-Jacobian shortcut needs (dS = P  . (dP − D)) 
+# to avoid ever materializing the full Jacobian. Computing it here — from the fully-materialized O and dO 
+# which means the block loop later can just load D_i per row instead of recomputing it inside every block iteration.
+
+@triton.jit
+def preprocess_kernel(
+    O, dO, D,
+    stride_ob, stride_oh, stride_os, stride_od,
+    stride_dob, stride_doh, stride_dos, stride_dod,
+    stride_Db, stride_Dh, stride_Ds,
+    seq_len,
+    head_dim: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+):
+    # 1. get pid_batch, pid_head, pid_m from program_id
+    
+    # 2. build offs_m, offs_d (same as forward's setup)
+    # 3. build o_ptrs and do_ptrs (same pattern as q_ptrs in forward)
+    # 4. load o_tile and do_tile (masked, other=0.0)
+    # 5. elementwise multiply, then tl.sum along axis=1 to get D_row (shape BLOCK_M,)
+    # 6. build D_ptrs (1D, like your fixed l_ptrs — no offs_d needed)
+    # 7. store D_row into D_ptrs, masked
 
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 

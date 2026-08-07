@@ -362,7 +362,7 @@ def backward_dkdv_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor,
     grid = (batch, num_heads, triton.cdiv(seq_len, BLOCK_N))
 
     backward_dkdv_kernel[grid](
-        Q, K, V, O, dO, L, D, dK, dV,
+        Q, K, V, dO, L, D, dK, dV,
         Q.stride(0), Q.stride(1), Q.stride(2), Q.stride(3),
         K.stride(0), K.stride(1), K.stride(2), K.stride(3),
         V.stride(0), V.stride(1), V.stride(2), V.stride(3),

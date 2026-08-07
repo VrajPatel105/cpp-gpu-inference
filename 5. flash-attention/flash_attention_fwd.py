@@ -576,6 +576,30 @@ def benchmark(batch, heads, head_dim):
               f"{tflops_tri / PEAK_TFLOPS * 100:>7.1f}% | "
               f"{tflops_cub / PEAK_TFLOPS * 100:>7.1f}% | "
               f"{mem_tri:>7.1f} | {mem_cub:>7.1f}")
+
+
+
+class FlashAttentionFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, Q, K, V):
+        O, L = flash_attention_forward(Q, K, V)
+        ctx.save_for_backward(Q, K, V, O, L)
+        return O
+
+    @staticmethod
+    def backward(ctx, dO):
+        Q, K, V, O, L = ctx.saved_tensors
+
+        batch, heads, seq_len, head_dim = Q.shape
+        dK = torch.empty(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+        dQ = torch.empty(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+        dV = torch.empty(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+
+        D = preprocess_kernel_forward(O, dO)
+        dK, dV = backward_dkdv_forward(Q, K, V, O, dO, L, D, dK, dV)
+        dQ = backward_dq_forward(Q, K, V, L, dO, D, dQ)
+
+        return dQ, dK, dV
         
 # main
 if __name__ == "__main__":

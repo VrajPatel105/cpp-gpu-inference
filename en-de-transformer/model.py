@@ -6,7 +6,7 @@ from config import configurations
 import sys
 sys.path.append("/mnt/c/dev/projects/cpp-gpu-inference/5. flash-attention")
 
-from flash_attention_fwd import FlashAttentionFunction
+from flash_attention import FlashAttentionFunction
 
 # Implementation pipeline: 
 # Embedding 

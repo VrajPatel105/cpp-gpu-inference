@@ -3,6 +3,11 @@ import torch.nn as nn
 import math
 from config import configurations
 
+import sys
+sys.path.append("/mnt/c/dev/projects/cpp-gpu-inference/5. flash-attention")
+
+from flash_attention_fwd import FlashAttentionFunction
+
 # Implementation pipeline: 
 # Embedding 
 # Positional Encoding 
@@ -58,7 +63,7 @@ class PositionalEncoding(nn.Module):
 # Multi Head attention class
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self, d_model, num_heads):
+    def __init__(self, d_model, num_heads, flash_attention=False):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -68,6 +73,7 @@ class MultiHeadAttention(nn.Module):
         self.W_k = nn.Linear(d_model, d_model)
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
+        self.flash_attention = flash_attention
 
     @staticmethod
     def attention(q,k,v,d_k,mask):
@@ -111,7 +117,19 @@ class MultiHeadAttention(nn.Module):
         # KV CACHE: save current K/V as the new cache for next step 
         new_cache = (k, v)
 
-        attention_scores = self.attention(q, k, v, self.d_k, mask=mask)
+        if self.flash_attention and kv_cache is None:
+            # 1. if flash_attention = true, then we firstly cast the k q v to fp16 cuz our flash attention class is casted to fp16
+            q = q.to(torch.float16)
+            k = k.to(torch.float16)
+            v = v.to(torch.float16)
+            # 2. calling the flashattention main class
+            O = FlashAttentionFunction.apply(q, k, v)
+            
+            # 3. cast results back to fp32 again : (
+            attention_scores = O.to(torch.float32)
+            
+        else: 
+            attention_scores = self.attention(q, k, v, self.d_k, mask=mask)
 
         x = self.W_o(attention_scores.transpose(1, 2).contiguous().view(batch_size, q_len, self.d_model))
 
@@ -185,7 +203,7 @@ class Encoder(nn.Module):
         self.feed_forward = feed_forward
 
     def forward(self,x, src_mask):
-        sub_layer = self.multi_head_attention(x,x,x,src_mask) # x q k v
+        sub_layer, _ = self.multi_head_attention(x,x,x,src_mask) # x q k v
         x = self.residual_connection[0](x, sub_layer)
         sub_layer = self.feed_forward(x)
         x = self.residual_connection[1](x, sub_layer)
@@ -348,7 +366,7 @@ def build_transformer(configurations):
     for _ in range(N)] )
     
     decoder_block_mdlist = nn.ModuleList([
-        Decoder(MultiHeadAttention(d_model, num_heads),MultiHeadAttention(d_model, num_heads), FeedForward(d_model), d_model)
+        Decoder(MultiHeadAttention(d_model, num_heads, flash_attention=True),MultiHeadAttention(d_model, num_heads), FeedForward(d_model), d_model)
     for _ in range(N)] )
     
     projection_layer = ProjectionLayer(d_model, tgt_vocab_size)

@@ -232,6 +232,76 @@ def backward_dkdv_kernel(
     dV_mask = offs_n[:, None] < seq_len
     tl.store(dV_ptrs, dV_acc, mask=dV_mask)
 
+@triton.jit
+def backward_dq_kernel(
+    Q, K, V, L, dO, D, dQ, 
+    stride_qb, stride_qh, stride_qs, stride_qd,
+    stride_kb, stride_kh, stride_ks, stride_kd,
+    stride_vb, stride_vh, stride_vs, stride_vd,
+    stride_lb, stride_lh, stride_ls,
+    stride_dob, stride_doh, stride_dos, stride_dod,
+    stride_Db, stride_Dh, stride_Ds,
+    stride_dQb, stride_dQh, stride_dQs, stride_dQd,
+    seq_len,
+    head_dim : tl.constexpr, 
+    BLOCK_M : tl.constexpr,
+    BLOCK_N : tl.constexpr
+):
+    pid_batch = tl.program_id(axis=0)
+    pid_head = tl.program_id(axis=1)
+    pid_m = tl.program_id(axis=2)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M) 
+    offs_d = tl.arange(0, head_dim)
+    q_ptrs = Q + pid_batch * stride_qb + pid_head * stride_qh + offs_m[:, None] * stride_qs + offs_d[None, :] * stride_qd 
+    q_mask = offs_m[:, None] < seq_len
+    q_tile = tl.load(q_ptrs, mask=q_mask, other=0.0)
+
+    l_ptrs = L + pid_batch * stride_lb + pid_head * stride_lh + offs_m * stride_ls
+    l_mask = offs_m < seq_len
+    l_tile = tl.load(l_ptrs, mask=l_mask, other=0.0)
+
+    D_ptrs = D + pid_batch * stride_Db + pid_head * stride_Dh + offs_m * stride_Ds
+    D_mask = offs_m < seq_len
+    D_tile = tl.load(D_ptrs, mask=D_mask, other=0.0)
+
+    dO_ptrs = dO + pid_batch * stride_dob + pid_head * stride_doh + offs_m[:, None] * stride_dos + offs_d[None, :] * stride_dod
+    dO_mask = offs_m[:, None] < seq_len
+    dO_tile = tl.load(dO_ptrs, mask=dO_mask, other=0.0)
+
+    dQ_acc = tl.zeros((BLOCK_M, head_dim), dtype=tl.float32)
+
+    for j in range(tl.cdiv(seq_len, BLOCK_N)):
+        offs_n = j * BLOCK_N + tl.arange(0, BLOCK_N)
+        k_ptrs = K + pid_batch * stride_kb + pid_head * stride_kh + offs_n[:, None] * stride_ks + offs_d[None, :] * stride_kd 
+        v_ptrs = V + pid_batch * stride_vb + pid_head * stride_vh + offs_n[:, None] * stride_vs + offs_d[None, :] * stride_vd 
+
+        k_mask = offs_n[:, None] < seq_len
+        v_mask = offs_n[:, None] < seq_len
+
+        k_tile = tl.load(k_ptrs, mask=k_mask, other=0.0)
+        v_tile = tl.load(v_ptrs, mask=v_mask, other=0.0)
+
+        S = tl.dot(q_tile, tl.trans(k_tile)) / (head_dim ** 0.5)
+        padding_ok = offs_n[None, :] < seq_len
+        causal_ok = offs_m[:, None] >= offs_n[None, :]
+        mask = padding_ok & causal_ok
+        S = tl.where(mask, S, float('-inf'))
+
+        P = tl.exp(S - l_tile[:, None])
+
+        dP = tl.dot(dO_tile, tl.trans(v_tile))
+
+        dS = P * (dP - D_tile[:, None]) / (head_dim ** 0.5)
+
+        dQ_acc += tl.dot(dS, k_tile.to(tl.float32))
+
+    dQ_ptrs = dQ + pid_batch * stride_dQb + pid_head * stride_dQh + offs_m[:, None] * stride_dQs + offs_d[None, :] * stride_dQd
+    dQ_mask = offs_m[:, None] < seq_len
+    tl.store(dQ_ptrs, dQ_acc, mask=dQ_mask)
+
+
+
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 
     # extracting the size for q k v tensors

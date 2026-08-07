@@ -147,6 +147,91 @@ def preprocess_kernel(
     # 7. store D_row into D_ptrs, masked
     tl.store(D_ptrs, D_row, mask=D_mask)
 
+
+@triton.jit
+def backward_dkdv_kernel(
+    Q, K, V, O, dO, L, D, dK, dV,
+    stride_qb, stride_qh, stride_qs, stride_qd,
+    stride_kb, stride_kh, stride_ks, stride_kd,
+    stride_vb, stride_vh, stride_vs, stride_vd,
+    stride_dob, stride_doh, stride_dos, stride_dod,
+    stride_Lb, stride_Lh, stride_Ls,
+    stride_Db, stride_Dh, stride_Ds,
+    stride_dkb, stride_dkh, stride_dks, stride_dkd,
+    stride_dvb, stride_dvh, stride_dvs, stride_dvd,
+    seq_len,
+    head_dim: tl.constexpr,
+    BLOCK_M: tl.constexpr,   # Q block size (inner loop)
+    BLOCK_N: tl.constexpr,   # K/V block size (outer/fixed)
+):
+    pid_batch = tl.program_id(axis=0)
+    pid_head = tl.program_id(axis=1)
+    pid_n = tl.program_id(axis=2)   # <-- note: pid over K/V blocks now, not Q blocks
+
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)   # K/V rows (fixed for this whole kernel instance)
+    offs_d = tl.arange(0, head_dim)
+
+    # 1. Load K_block, V_block ONCE (outside the loop)
+    k_ptrs = K + pid_batch * stride_kb + pid_head * stride_kh + offs_n[:, None] * stride_ks + offs_d[None, :] * stride_kd 
+    v_ptrs = V + pid_batch * stride_vb + pid_head * stride_vh + offs_n[:, None] * stride_vs + offs_d[None, :] * stride_vd 
+
+    k_mask = offs_n[:, None] < seq_len
+    v_mask = offs_n[:, None] < seq_len
+
+    k_tile = tl.load(k_ptrs, mask=k_mask, other=0.0)
+    v_tile = tl.load(v_ptrs, mask=v_mask, other=0.0)
+    
+    # 2. Initialize dK_acc, dV_acc as zeros, shape (BLOCK_N, head_dim) — these accumulate across the Q loop.
+    dK_acc = tl.zeros((BLOCK_N, head_dim), dtype=tl.float32)
+    dV_acc = tl.zeros((BLOCK_N, head_dim), dtype=tl.float32)
+
+    # 3. Loop over Q blocks
+    for i in range(tl.cdiv(seq_len, BLOCK_M)):
+
+        offs_m = i * BLOCK_M + tl.arange(0, BLOCK_M)
+        # a. load Q_block, dO_block, L_block, D_block for this Q chunk 
+        q_ptrs = Q + pid_batch * stride_qb + pid_head * stride_qh + offs_m[:, None] * stride_qs + offs_d[None, :] * stride_qd 
+        q_mask = offs_m[:, None] < seq_len
+        q_tile = tl.load(q_ptrs, mask=q_mask, other=0.0)
+
+        dO_ptrs = dO + pid_batch * stride_dob + pid_head * stride_doh + offs_m[:, None] * stride_dos + offs_d[None, :] * stride_dod
+        dO_mask = offs_m[:, None] < seq_len
+        dO_tile = tl.load(dO_ptrs, mask=dO_mask, other=0.0)
+
+        l_ptrs = L + pid_batch * stride_Lb + pid_head * stride_Lh + offs_m * stride_Ls
+        l_mask = offs_m < seq_len
+        l_tile = tl.load(l_ptrs, mask=l_mask, other=0.0)
+
+        D_ptrs = D + pid_batch * stride_Db + pid_head * stride_Dh + offs_m * stride_Ds
+        D_mask = offs_m < seq_len
+        D_tile = tl.load(D_ptrs, mask=D_mask, other=0.0)
+
+        # b. S = Q_block @ K_block.T / sqrt(head_dim)
+        S = tl.dot(q_tile, tl.trans(k_tile)) / (head_dim ** 0.5)
+        # c. apply causal + padding mask (same logic as forward — careful: roles of offs_m/offs_n in the mask condition are the same comparison, just Q block vs K/V block)
+        padding_ok = offs_n[None, :] < seq_len
+        causal_ok = offs_m[:, None] >= offs_n[None, :]
+        mask = padding_ok & causal_ok
+        S = tl.where(mask, S, float('-inf'))
+        # d. P = exp(S - L_block[:, None])
+        P = tl.exp(S - l_tile[:, None])
+        # e. dV_acc += P.T @ dO_block
+        dV_acc += tl.dot(tl.trans(P), dO_tile)
+        # f. dP = dO_block @ V_block.T
+        dP = tl.dot(dO_tile, tl.trans(v_tile))
+        # g. dS = P * (dP - D_block[:, None])
+        dS = P * (dP - D_tile[:, None])
+        # h. dK_acc += dS.T @ Q_block
+        dK_acc += tl.dot(tl.trans(dS), q_tile)
+    # 4. After the loop: store dK_acc into dK, dV_acc into dV (masked by offs_n < seq_len — this is a K/V-row mask now, not a Q-row mask)
+    dK_ptrs = dK + pid_batch * stride_dkb + pid_head * stride_dkh + offs_n[:, None] * stride_dks + offs_d[None, :] * stride_dkd
+    dK_mask = offs_n[:, None] < seq_len
+    tl.store(dK_ptrs, dK_acc, mask=dK_mask)
+
+    dV_ptrs = dV + pid_batch * stride_dvb + pid_head * stride_dvh + offs_n[:, None] * stride_dvs + offs_d[None, :] * stride_dvd
+    dV_mask = offs_n[:, None] < seq_len
+    tl.store(dV_ptrs, dV_acc, mask=dV_mask)
+
 def flash_attention_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
 
     # extracting the size for q k v tensors

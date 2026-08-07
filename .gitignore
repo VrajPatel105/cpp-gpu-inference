@@ -6,3 +6,4 @@ venv312
 __pycache__
 ./vscode
 .vscode/
+*.pt

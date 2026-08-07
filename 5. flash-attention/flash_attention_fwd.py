@@ -216,13 +216,13 @@ def backward_dkdv_kernel(
         # d. P = exp(S - L_block[:, None])
         P = tl.exp(S - l_tile[:, None])
         # e. dV_acc += P.T @ dO_block
-        dV_acc += tl.dot(tl.trans(P), dO_tile)
+        dV_acc += tl.dot(tl.trans(P), dO_tile.to(tl.float32))
         # f. dP = dO_block @ V_block.T
         dP = tl.dot(dO_tile, tl.trans(v_tile))
         # g. dS = P * (dP - D_block[:, None])
         dS = P * (dP - D_tile[:, None])
         # h. dK_acc += dS.T @ Q_block
-        dK_acc += tl.dot(tl.trans(dS), q_tile)
+        dK_acc += tl.dot(tl.trans(dS), q_tile.to(tl.float32))
     # 4. After the loop: store dK_acc into dK, dV_acc into dV (masked by offs_n < seq_len — this is a K/V-row mask now, not a Q-row mask)
     dK_ptrs = dK + pid_batch * stride_dkb + pid_head * stride_dkh + offs_n[:, None] * stride_dks + offs_d[None, :] * stride_dkd
     dK_mask = offs_n[:, None] < seq_len
@@ -280,24 +280,32 @@ def preprocess_kernel_forward(O: torch.Tensor, dO: torch.Tensor):
 
     return D
 
+def backward_dkdv_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor,
+                          O: torch.Tensor, dO: torch.Tensor, L: torch.Tensor,
+                          D: torch.Tensor, dK: torch.Tensor, dV: torch.Tensor):
 
-def test_preprocess_kernel(batch, heads, seq_len, head_dim):
-    torch.manual_seed(0)
-    
-    O = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
-    dO = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    batch, num_heads, seq_len, head_dim = K.shape
 
-    D = preprocess_kernel_forward(O, dO).to(torch.float32)
+    BLOCK_M = 64
+    BLOCK_N = 64
 
-    D_ref = (O.float() * dO.float()).sum(dim=-1)
+    grid = (batch, num_heads, triton.cdiv(seq_len, BLOCK_N))
 
-    print("test preprocess kernel results  : \n ")
-    diff = (D - D_ref).abs()
-    print("max abs diff:", diff.max().item())
-    print("mean abs diff:", diff.mean().item())
-    result = torch.allclose(D, D_ref, atol=1e-2, rtol=1e-3)
+    backward_dkdv_kernel[grid](
+        Q, K, V, O, dO, L, D, dK, dV,
+        Q.stride(0), Q.stride(1), Q.stride(2), Q.stride(3),
+        K.stride(0), K.stride(1), K.stride(2), K.stride(3),
+        V.stride(0), V.stride(1), V.stride(2), V.stride(3),
+        dO.stride(0), dO.stride(1), dO.stride(2), dO.stride(3),
+        L.stride(0), L.stride(1), L.stride(2),
+        D.stride(0), D.stride(1), D.stride(2),
+        dK.stride(0), dK.stride(1), dK.stride(2), dK.stride(3),
+        dV.stride(0), dV.stride(1), dV.stride(2), dV.stride(3),
+        seq_len, head_dim, BLOCK_M, BLOCK_N,
+    )
 
-    return result
+    return dK, dV
+
 
 def run_fa_fwd(batch, heads, seq_len, head_dim):
 
@@ -322,6 +330,58 @@ def run_fa_fwd(batch, heads, seq_len, head_dim):
     result = torch.allclose(output_flash_attention_o, output_torch, atol=1e-2, rtol=1e-3)
     return result
 
+def test_preprocess_kernel(batch, heads, seq_len, head_dim):
+    torch.manual_seed(0)
+    
+    O = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    dO = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+
+    D = preprocess_kernel_forward(O, dO).to(torch.float32)
+
+    D_ref = (O.float() * dO.float()).sum(dim=-1)
+
+    print("test preprocess kernel results  : \n ")
+    diff = (D - D_ref).abs()
+    print("max abs diff:", diff.max().item())
+    print("mean abs diff:", diff.mean().item())
+    result = torch.allclose(D, D_ref, atol=1e-2, rtol=1e-3)
+
+    return result
+
+
+def test_backward_dkdv_kernel(batch, heads, seq_len, head_dim):
+    torch.manual_seed(42)
+
+    Q = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    K = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    V = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    O = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    dO = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    L = torch.rand(batch, heads, seq_len, device=DEVICE, dtype=torch.float16)
+    D = torch.rand(batch, heads, seq_len, device=DEVICE, dtype=torch.float16)
+    dK = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    dV = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+
+    dK, dV = backward_dkdv_forward(
+        Q, K, V,
+        O, dO, L,
+        D, dK, dV
+    )
+
+    dK = dK.to(torch.float32)
+    dV = dV.to(torch.float32)
+
+    Q_ref = Q.clone().requires_grad_(True)
+    K_ref = K.clone().requires_grad_(True)
+    V_ref = V.clone().requires_grad_(True)
+
+    S = torch.matmul(Q_ref, torch.transpose(K_ref, 2, 3)) / (head_dim ** 0.5)
+
+    causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=DEVICE, dtype=torch.bool))
+    S = S.masked_fill(~causal_mask, float('-inf'))
+    P = torch.softmax(S, dim=-1)
+    O_ref = torch.matmul(P, V_ref)
+    O_ref.backward(dO)
 
 # Peak FP32 for the MOBILE RTX 5080 (~32 TFLOP/s reference).
 PEAK_TFLOPS = 49.15

@@ -150,7 +150,7 @@ def preprocess_kernel(
 
 @triton.jit
 def backward_dkdv_kernel(
-    Q, K, V, O, dO, L, D, dK, dV,
+    Q, K, V, dO, L, D, dK, dV,
     stride_qb, stride_qh, stride_qs, stride_qd,
     stride_kb, stride_kh, stride_ks, stride_kd,
     stride_vb, stride_vh, stride_vs, stride_vd,
@@ -600,24 +600,70 @@ class FlashAttentionFunction(torch.autograd.Function):
         dQ = backward_dq_forward(Q, K, V, L, dO, D, dQ)
 
         return dQ, dK, dV
-        
+
+
+def test_autograd_function(batch, heads, seq_len, head_dim):
+    torch.manual_seed(0)
+
+    Q = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16, requires_grad=True)
+    K = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16, requires_grad=True)
+    V = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16, requires_grad=True)
+    dO = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+
+    # run through our custom autograd.Function
+    O = FlashAttentionFunction.apply(Q, K, V)
+    O.backward(dO)
+
+    dQ = Q.grad.to(torch.float32)
+    dK = K.grad.to(torch.float32)
+    dV = V.grad.to(torch.float32)
+
+    # PyTorch reference (SDPA)
+    Q_ref = Q.detach().clone().requires_grad_(True)
+    K_ref = K.detach().clone().requires_grad_(True)
+    V_ref = V.detach().clone().requires_grad_(True)
+
+    O_ref = torch.nn.functional.scaled_dot_product_attention(Q_ref, K_ref, V_ref, is_causal=True)
+    O_ref.backward(dO)
+
+    dQ_ref = Q_ref.grad.to(torch.float32)
+    dK_ref = K_ref.grad.to(torch.float32)
+    dV_ref = V_ref.grad.to(torch.float32)
+
+    print("test autograd.Function (end-to-end) results:\n")
+    for name, val, ref in [("dQ", dQ, dQ_ref), ("dK", dK, dK_ref), ("dV", dV, dV_ref)]:
+        diff = (val - ref).abs()
+        print(f"{name} max abs diff:", diff.max().item())
+        print(f"{name} mean abs diff:", diff.mean().item())
+
+    result = (
+        torch.allclose(dQ, dQ_ref, atol=1e-2, rtol=1e-2)
+        and torch.allclose(dK, dK_ref, atol=1e-2, rtol=1e-2)
+        and torch.allclose(dV, dV_ref, atol=1e-2, rtol=1e-2)
+    )
+    return result
+
+
 # main
 if __name__ == "__main__":
 
-    print("\n output run forward results : \n ")
-    output_run_fwd = run_fa_fwd(2,4,512,64)
-    print(output_run_fwd)
-    print("\n output preprocess kernel results : \n ")
-    output_preprocess_kernel = test_preprocess_kernel(2,4,512,64)
-    print(output_preprocess_kernel)
-    print("\n output dkdv kernel results : \n ")
-    output_dkdv_kernel = test_backward_dkdv_kernel(2,4,512,64)
-    print(output_dkdv_kernel)
-    print("\n output dq kernel results : \n ")
-    output_dkdv_kernel = test_backward_dq_kernel(2,4,512,64)
-    print(output_dkdv_kernel)
+    # print("\n output run forward results : \n ")
+    # output_run_fwd = run_fa_fwd(2,4,512,64)
+    # print(output_run_fwd)
+    # print("\n output preprocess kernel results : \n ")
+    # output_preprocess_kernel = test_preprocess_kernel(2,4,512,64)
+    # print(output_preprocess_kernel)
+    # print("\n output dkdv kernel results : \n ")
+    # output_dkdv_kernel = test_backward_dkdv_kernel(2,4,512,64)
+    # print(output_dkdv_kernel)
+    # print("\n output dq kernel results : \n ")
+    # output_dkdv_kernel = test_backward_dq_kernel(2,4,512,64)
+    # print(output_dkdv_kernel)
     # print("\n Benchmark testing \n")
     # benchmark(2,4,64)
+
+    test_autograd_function(2,4,512,64)
+
 
 
 # output for three kernels ; 

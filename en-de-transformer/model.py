@@ -63,7 +63,7 @@ class PositionalEncoding(nn.Module):
 # Multi Head attention class
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self, d_model, num_heads, flash_attention=False):
+    def __init__(self, d_model, num_heads, flash_attention=False, is_cross_attention=False):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -74,6 +74,7 @@ class MultiHeadAttention(nn.Module):
         self.W_v = nn.Linear(d_model, d_model)
         self.W_o = nn.Linear(d_model, d_model)
         self.flash_attention = flash_attention
+        self.is_cross_attention = is_cross_attention
 
     @staticmethod
     def attention(q,k,v,d_k,mask):
@@ -106,15 +107,14 @@ class MultiHeadAttention(nn.Module):
         k = k.view(batch_size, k_len, self.num_heads, self.d_k).transpose(1, 2)
         v = v.view(batch_size, k_len, self.num_heads, self.d_k).transpose(1, 2)
 
-
-        #  KV CACHE: if cache exists, prepend old K/V to new K/V 
         if kv_cache is not None:
-            old_k, old_v = kv_cache                              # unpack previous step's cached K and V
-            k = torch.cat([old_k, k], dim=2)                    # append new key to cache along seq dimension
-            v = torch.cat([old_v, v], dim=2)                    # append new value to cache along seq dimension
-            # k is now (B, heads, old_len + new_len, d_k) — full history
+            if self.is_cross_attention:
+                k, v = kv_cache       
+            else:
+                old_k, old_v = kv_cache
+                k = torch.cat([old_k, k], dim=2)
+                v = torch.cat([old_v, v], dim=2)
 
-        # KV CACHE: save current K/V as the new cache for next step 
         new_cache = (k, v)
 
         if self.flash_attention and kv_cache is None:
@@ -366,7 +366,7 @@ def build_transformer(configurations):
     for _ in range(N)] )
     
     decoder_block_mdlist = nn.ModuleList([
-        Decoder(MultiHeadAttention(d_model, num_heads, flash_attention=True),MultiHeadAttention(d_model, num_heads), FeedForward(d_model), d_model)
+        Decoder(MultiHeadAttention(d_model, num_heads, flash_attention=True),MultiHeadAttention(d_model, num_heads, is_cross_attention=True), FeedForward(d_model), d_model)
     for _ in range(N)] )
     
     projection_layer = ProjectionLayer(d_model, tgt_vocab_size)

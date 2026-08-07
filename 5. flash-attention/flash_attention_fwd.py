@@ -376,6 +376,31 @@ def backward_dkdv_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor,
 
     return dK, dV
 
+def backward_dq_forward(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor,
+                        L: torch.Tensor, dO: torch.Tensor, D: torch.Tensor, 
+                        dQ: torch.Tensor):
+
+    batch, num_heads, seq_len, head_dim = K.shape
+
+    BLOCK_M = 64
+    BLOCK_N = 64
+
+    grid = (batch, num_heads, triton.cdiv(seq_len, BLOCK_M))
+
+    backward_dq_kernel[grid](
+        Q, K, V, L, dO, D, dQ,
+        Q.stride(0), Q.stride(1), Q.stride(2), Q.stride(3),
+        K.stride(0), K.stride(1), K.stride(2), K.stride(3),
+        V.stride(0), V.stride(1), V.stride(2), V.stride(3),
+        L.stride(0), L.stride(1), L.stride(2),
+        dO.stride(0), dO.stride(1), dO.stride(2), dO.stride(3),
+        D.stride(0), D.stride(1), D.stride(2),
+        dQ.stride(0), dQ.stride(1), dQ.stride(2), dQ.stride(3),
+        seq_len, head_dim, BLOCK_M, BLOCK_N,        
+    )
+
+    return dQ
+
 
 def run_fa_fwd(batch, heads, seq_len, head_dim):
 
@@ -470,6 +495,49 @@ def test_backward_dkdv_kernel(batch, heads, seq_len, head_dim):
 
     return result_k and result_v
 
+def test_backward_dq_kernel(batch, heads, seq_len, head_dim):
+
+    torch.manual_seed(42)
+
+    Q = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    K = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    V = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+    dO = torch.rand(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+
+    O, L = flash_attention_forward(Q, K, V)
+    D = preprocess_kernel_forward(O, dO)
+
+    dQ = torch.empty(batch, heads, seq_len, head_dim, device=DEVICE, dtype=torch.float16)
+
+    dQ = backward_dq_forward(
+        Q, K, V,
+        L, dO, D,
+        dQ
+    ).to(torch.float32)
+
+    Q_ref = Q.clone().requires_grad_(True)
+    K_ref = K.clone().requires_grad_(True)
+    V_ref = V.clone().requires_grad_(True)
+
+    S = torch.matmul(Q_ref, torch.transpose(K_ref, 2, 3)) / (head_dim ** 0.5)
+
+    causal_mask = torch.tril(torch.ones(seq_len, seq_len, device=DEVICE, dtype=torch.bool))
+    S = S.masked_fill(~causal_mask, float('-inf'))
+    P = torch.softmax(S, dim=-1)
+    O_ref = torch.matmul(P, V_ref)
+    O_ref.backward(dO)
+
+    dQ_ref = Q_ref.grad.to(torch.float32)
+
+    print("test backward dQ kernel results:\n")
+    diff_q = (dQ - dQ_ref).abs()
+    print("dQ max abs diff:", diff_q.max().item())
+    print("dQ mean abs diff:", diff_q.mean().item())
+
+    result_q = torch.allclose(dQ, dQ_ref, atol=1e-2, rtol=1e-2)
+
+    return result_q
+
 # Peak FP32 for the MOBILE RTX 5080 (~32 TFLOP/s reference).
 PEAK_TFLOPS = 49.15
 def benchmark(batch, heads, head_dim):
@@ -521,36 +589,37 @@ if __name__ == "__main__":
     print("\n output dkdv kernel results : \n ")
     output_dkdv_kernel = test_backward_dkdv_kernel(2,4,512,64)
     print(output_dkdv_kernel)
+    print("\n output dq kernel results : \n ")
+    output_dkdv_kernel = test_backward_dq_kernel(2,4,512,64)
+    print(output_dkdv_kernel)
     # print("\n Benchmark testing \n")
     # benchmark(2,4,64)
 
 
 # output for three kernels ; 
+# (mlenv) vraj@Vraj:/mnt/c/dev/projects/cpp-gpu-inference/5. flash-attention$ python flash_attention_fwd.py
 
 #  output run forward results : 
- 
 # max abs diff: 0.00048828125
 # mean abs diff: 0.00017583370208740234
 # True
 
 #  output preprocess kernel results : 
- 
-# test preprocess kernel results  : 
- 
 # max abs diff: 0.020559310913085938
 # mean abs diff: 0.0045571778900921345
 # True
 
-#  output dkdv kernel results : 
- 
-# /home/vraj/gpu-work/mlenv/lib/python3.14/site-packages/torch/autograd/graph.py:869: UserWarning: Attempting to run cuBLAS, but there was no current CUDA context! Attempting to set the primary context... (Triggered internally at /pytorch/aten/src/ATen/cuda/CublasHandlePool.cpp:335.)
-#   return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+# output dkdv kernel results : 
 # dK max abs diff: 0.003173828125
 # dK mean abs diff: 0.0003534520510584116
 # dV max abs diff: 0.00390625
 # dV mean abs diff: 0.00018392894708085805
 # True
 
+# test backward dQ kernel results:
+# dQ max abs diff: 0.00229644775390625
+# dQ mean abs diff: 0.0004214513464830816
+# True
 
 # output 
 

@@ -1,5 +1,5 @@
 # SmoothQuant: Accurate and Efficient Post-Training Quantization for LLMs
-*Xiao, Lin, Seznec, Demouth, Han*
+*This was written by claude :)*
 
 ## 1. The core asymmetry: weights vs. activations
 

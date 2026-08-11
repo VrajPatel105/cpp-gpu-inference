@@ -58,51 +58,101 @@ if __name__ == "__main__":
 
 # OUTPUT FROM THE MODEL WHEN RUNNING THE ABOVE CODE
 
+
+
+# EN: I am hungry.
+# DE: ich bin hungrig
+
+# EN: Hello.
+# DE: ist
+
+# EN: I am tired.
+# DE: ich bin müde
+
+# EN: The book is on the table.
+# DE: der auf dem schreibtisch
+
+# EN: She is my friend.
+# DE: sie ist dich
+
+# EN: What time is it?
+# DE: was ist
+
+# EN: I am happy.
+# DE: ich bin glücklich
+
+# EN: He is at home.
+# DE: er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist
+
+# EN: The dog is sleeping.
+# DE: der nähe
+
+# EN: This is my car.
+# DE: das auto
+
+# EN: I like coffee.
+# DE: ich habe
+
+# EN: They are students.
+# DE: sie sind sie sind sie sind sie sind sie
+
+# EN: Where is the bathroom?
+# DE: wo ist das klo
+
+# EN: It is raining today.
+# DE: es regnet
+
+# EN: Please open the door.
+# DE: bitte die tür
+
 """
+Retraining results : (drastic improvement)
+
+Checkpoint Loaded 
 
 EN: I am hungry.
-DE: ich bin hungrig
+DE: ich habe hunger
 
 EN: Hello.
-DE: ist
+DE: hallo
 
 EN: I am tired.
 DE: ich bin müde
 
 EN: The book is on the table.
-DE: der auf dem schreibtisch
+DE: das buch ist auf dem tisch
 
 EN: She is my friend.
-DE: sie ist dich
+DE: sie ist mein freund
 
 EN: What time is it?
-DE: was ist
+DE: was ist es zeit
 
 EN: I am happy.
 DE: ich bin glücklich
 
 EN: He is at home.
-DE: er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist er ist
+DE: er ist zu hause
 
 EN: The dog is sleeping.
-DE: der nähe
+DE: der hund schläft
 
 EN: This is my car.
-DE: das auto
+DE: das ist mein auto
 
 EN: I like coffee.
-DE: ich habe
+DE: ich mag kaffee
 
 EN: They are students.
-DE: sie sind sie sind sie sind sie sind sie
+DE: sie sind studenten
 
 EN: Where is the bathroom?
-DE: wo ist das klo
+DE: wo ist der weg
 
 EN: It is raining today.
-DE: es regnet
+DE: es regnet heute
 
 EN: Please open the door.
-DE: bitte die tür
+DE: bitte öffnen sie die tür
 
 """

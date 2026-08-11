@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from model import build_transformer
 import torch.optim as optim
 from utils import make_masks, causal_mask
+from tqdm import tqdm  
 
 from tokenizer import Tokenizer
 
@@ -159,7 +160,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, config)
     for epoch in range(config['epochs']):
         model.train()
         total_loss = 0
-        for batch in train_loader:
+        for batch in tqdm(train_loader, desc=f"epoch {epoch+1}"): 
             encoder_input = batch["encoder_input"].to(device)
             decoder_input = batch["decoder_input"].to(device)
             label = batch["label"].to(device)
@@ -182,12 +183,7 @@ def train(model, train_loader, val_loader, criterion, optimizer, device, config)
 
         if val_loss < best_val:
             best_val = val_loss
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'eng_vocab': eng_tok.word2idx,
-                'de_vocab': de_tok.word2idx,
-                'config': configurations,
-            }, 'transformer_en_de.pt')
+            torch.save({...}, 'transformer_en_de.pt')
             print(f"  -> saved (best val so far)")
 
 

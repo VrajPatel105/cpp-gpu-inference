@@ -131,15 +131,16 @@ def replace_with_bnb_linear(module, skip_names=("projection_layer",)):
             replace_with_bnb_linear(child, skip_names)
             
 # load bnb model
-bnb_model = build_transformer(configurations).to(device)
+bnb_model = build_transformer(configurations)  
 bnb_checkpoint = torch.load(
     '/mnt/c/dev/projects/cpp-gpu-inference/en-de-transformer/transformer_en_de.pt',
-    map_location=device
+    map_location='cpu'  
 )
 bnb_model.load_state_dict(bnb_checkpoint['model_state_dict'])
 
 replace_with_bnb_linear(bnb_model)
-bnb_model = bnb_model.to(device)  # bnb layers quantize weights to int8 once moved to CUDA
+
+bnb_model = bnb_model.to(device) 
 bnb_model.eval()
 
 torch.save(bnb_model.state_dict(), 'bnb_transformer_en_de.pt')
@@ -165,6 +166,23 @@ def compute_perplexity(model, val_loader, criterion, device, pad_id):
     avg_loss = evaluate(model, val_loader, criterion, device, pad_id)
     perplexity = math.exp(avg_loss)
     return perplexity
+
+# functions from claude 
+def print_memory_footprint(model, name):
+    # Disk size: how many parameters/buffers actually exist, in bytes
+    param_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
+    buffer_bytes = sum(b.numel() * b.element_size() for b in model.buffers())
+    total_mb = (param_bytes + buffer_bytes) / (1024 ** 2)
+    print(f"{name:10s} | params+buffers: {total_mb:.2f} MB")
+
+
+def print_peak_gpu_memory(model, sentence, eng_tok, de_tok, device, max_len, name):
+    torch.cuda.reset_peak_memory_stats(device)
+    torch.cuda.empty_cache()
+    _ = translate(model, sentence, eng_tok, de_tok, device, max_len)
+    peak_mb = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
+    print(f"{name:10s} | peak GPU memory during inference: {peak_mb:.2f} MB")
+
 
 def main():
 
@@ -205,45 +223,68 @@ def main():
     ]
 
     max_len = configurations['max_len']
-    for s in sentences:
-        print(f"EN: {s}")
-        original_translation = quantized_translation = bnb_translation = None
+    # for s in sentences:
+    #     print(f"EN: {s}")
+    #     original_translation = quantized_translation = bnb_translation = None
 
-        try:
-            original_translation = translate(original_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
-            print(f"  ORIGINAL : {original_translation}")
-        except AssertionError as e:
-            print(f"  ORIGINAL : skipped ({e})")
+    #     try:
+    #         original_translation = translate(original_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
+    #         print(f"  ORIGINAL : {original_translation}")
+    #     except AssertionError as e:
+    #         print(f"  ORIGINAL : skipped ({e})")
 
-        try:
-            quantized_translation = translate(quantized_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
-            print(f"  QUANTIZED: {quantized_translation}")
-        except AssertionError as e:
-            print(f"  QUANTIZED: skipped ({e})")
+    #     try:
+    #         quantized_translation = translate(quantized_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
+    #         print(f"  QUANTIZED: {quantized_translation}")
+    #     except AssertionError as e:
+    #         print(f"  QUANTIZED: skipped ({e})")
 
-        try:
-            bnb_translation = translate(bnb_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
-            print(f"  BNB: {bnb_translation}")
-        except AssertionError as e:
-            print(f"  BNB: skipped ({e})")
+    #     try:
+    #         bnb_translation = translate(bnb_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
+    #         print(f"  BNB: {bnb_translation}")
+    #     except AssertionError as e:
+    #         print(f"  BNB: skipped ({e})")
 
-        match = "MATCH" if original_translation == quantized_translation == bnb_translation else "DIFFER"
-        print(f"  -> {match}\n")
+    #     match = "MATCH" if original_translation == quantized_translation == bnb_translation else "DIFFER"
+    #     print(f"  -> {match}\n")
 
-    perplexities = {}
-    perplexities['original'] = compute_perplexity(original_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
-    perplexities['quantized'] = compute_perplexity(quantized_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
-    perplexities['bnb'] = compute_perplexity(bnb_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
+    # perplexities = {}
+    # perplexities['original'] = compute_perplexity(original_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
+    # perplexities['quantized'] = compute_perplexity(quantized_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
+    # perplexities['bnb'] = compute_perplexity(bnb_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
+    
+    sample_bnb_layer = bnb_model.encoder_blocks[0].multi_head_attention.W_q
+    print(type(sample_bnb_layer.weight), sample_bnb_layer.weight.dtype)
+        
+    print("\n--- Static Memory Footprint (params + buffers) ---")
+    print_memory_footprint(original_model, "ORIGINAL")
+    print_memory_footprint(quantized_model, "QUANTIZED")
+    print_memory_footprint(bnb_model, "BNB")
 
+    print("\n--- Peak GPU Memory During Inference ---")
+    print_peak_gpu_memory(original_model, "I am hungry", english_tokenizer, german_tokenizer, device, max_len, "ORIGINAL")
+    print_peak_gpu_memory(quantized_model, "I am hungry", english_tokenizer, german_tokenizer, device, max_len, "QUANTIZED")
+    print_peak_gpu_memory(bnb_model, "I am hungry", english_tokenizer, german_tokenizer, device, max_len, "BNB")
+
+    
+# Static Memory Footprint (params + buffers) ---
+# ORIGINAL   | params+buffers: 430.52 MB
+# QUANTIZED  | params+buffers: 230.77 MB
+# BNB        | params+buffers: 304.52 MB
+
+# --- Peak GPU Memory During Inference ---
+# ORIGINAL   | peak GPU memory during inference: 2534.08 MB
+# QUANTIZED  | peak GPU memory during inference: 2397.27 MB
+# BNB        | peak GPU memory during inference: 2308.47 MB
     
 # --- Perplexity Comparison ---
 # ORIGINAL  : 21.8669
 # QUANTIZED : 21.8698
 # BNB       : 21.8653
 
-    print("\n--- Perplexity Comparison ---")
-    for name, ppl in perplexities.items():
-        print(f"{name.upper():10s}: {ppl:.4f}")
+    # print("\n--- Perplexity Comparison ---")
+    # for name, ppl in perplexities.items():
+    #     print(f"{name.upper():10s}: {ppl:.4f}")
 
 
 if __name__ == "__main__":

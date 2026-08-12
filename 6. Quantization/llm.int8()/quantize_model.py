@@ -102,7 +102,6 @@ def translate(model, sentence, eng_tok, de_tok, device, max_len):
         return de_tok.decode_sentence(ids)
 
 
-
 def main():
 
     english, german = load_data(configurations['path'])
@@ -111,34 +110,50 @@ def main():
     german_tokenizer = Tokenizer()
     german_tokenizer.build_vocab(german)
 
-    # test sentences
+    # Build a fresh, UNQUANTIZED model for comparison
+    original_model = build_transformer(configurations).to(device)
+    original_checkpoint = torch.load(
+        '/mnt/c/dev/projects/cpp-gpu-inference/en-de-transformer/transformer_en_de.pt',
+        map_location=device
+    )
+    original_model.load_state_dict(original_checkpoint['model_state_dict'])
+    original_model.eval()
+
     sentences = [
-    "I am hungry.",
-    "Hello.",
-    "I am tired.",
-    "The book is on the table.",
-    "She is my friend.",
-    "What time is it?",
-    "I am happy.",
-    "He is at home.",
-    "The dog is sleeping.",
-    "This is my car.",
-    "I like coffee.",
-    "They are students.",
-    "Where is the bathroom?",
-    "It is raining today.",
-    "Please open the door.",
+        "I am hungry.",
+        "Hello.",
+        "I am tired.",
+        "The book is on the table.",
+        "She is my friend.",
+        "What time is it?",
+        "I am happy.",
+        "He is at home.",
+        "The dog is sleeping.",
+        "This is my car.",
+        "I like coffee.",
+        "They are students.",
+        "Where is the bathroom?",
+        "It is raining today.",
+        "Please open the door.",
     ]
 
     max_len = configurations['max_len']
     for s in sentences:
+        print(f"EN: {s}")
         try:
-            translation = translate(quantized_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
-            print(f"EN: {s}")
-            print(f"DE: {translation}\n")
+            original_translation = translate(original_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
+            print(f"  ORIGINAL : {original_translation}")
         except AssertionError as e:
-            print(f"EN: {s}")
-            print(f"   skipped: {e}\n")
+            print(f"  ORIGINAL : skipped ({e})")
+
+        try:
+            quantized_translation = translate(quantized_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
+            print(f"  QUANTIZED: {quantized_translation}")
+        except AssertionError as e:
+            print(f"  QUANTIZED: skipped ({e})")
+
+        match = "MATCH" if original_translation == quantized_translation else "DIFFER"
+        print(f"  -> {match}\n")
 
 
 if __name__ == "__main__":
@@ -147,48 +162,78 @@ if __name__ == "__main__":
 """
 # output 
 EN: I am hungry.
-DE: ich habe hunger
+  ORIGINAL : ich habe hunger
+  QUANTIZED: ich habe hunger
+  -> MATCH
 
 EN: Hello.
-DE: hallo
+  ORIGINAL : hallo
+  QUANTIZED: hallo
+  -> MATCH
 
 EN: I am tired.
-DE: ich bin müde
+  ORIGINAL : ich bin müde
+  QUANTIZED: ich bin müde
+  -> MATCH
 
 EN: The book is on the table.
-DE: das buch ist auf dem tisch
+  ORIGINAL : das buch ist auf dem tisch
+  QUANTIZED: das buch ist auf dem tisch
+  -> MATCH
 
 EN: She is my friend.
-DE: sie ist mein freund
+  ORIGINAL : sie ist mein freund
+  QUANTIZED: sie ist mein freund
+  -> MATCH
 
 EN: What time is it?
-DE: was ist es zeit
+  ORIGINAL : was ist es zeit
+  QUANTIZED: was ist es zeit
+  -> MATCH
 
 EN: I am happy.
-DE: ich bin glücklich
+  ORIGINAL : ich bin glücklich
+  QUANTIZED: ich bin glücklich
+  -> MATCH
 
 EN: He is at home.
-DE: er ist zu hause
+  ORIGINAL : er ist zu hause
+  QUANTIZED: er ist zu hause
+  -> MATCH
 
 EN: The dog is sleeping.
-DE: der hund schläft
+  ORIGINAL : der hund schläft
+  QUANTIZED: der hund schläft
+  -> MATCH
 
 EN: This is my car.
-DE: das ist mein auto
+  ORIGINAL : das ist mein auto
+  QUANTIZED: das ist mein auto
+  -> MATCH
 
 EN: I like coffee.
-DE: ich mag kaffee
+  ORIGINAL : ich mag kaffee
+  QUANTIZED: ich mag kaffee
+  -> MATCH
 
 EN: They are students.
-DE: sie sind studenten
+  ORIGINAL : sie sind studenten
+  QUANTIZED: sie sind studenten
+  -> MATCH
 
 EN: Where is the bathroom?
-DE: wo ist der weg
+  ORIGINAL : wo ist der weg
+  QUANTIZED: wo ist der weg
+  -> MATCH
 
 EN: It is raining today.
-DE: es regnet heute
+  ORIGINAL : es regnet heute
+  QUANTIZED: es regnet heute
+  -> MATCH
 
 EN: Please open the door.
-DE: bitte öffnen sie die tür
+  ORIGINAL : bitte öffnen sie die tür
+  QUANTIZED: bitte öffnen sie die tür
+  -> MATCH
 
 """

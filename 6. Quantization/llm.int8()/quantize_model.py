@@ -138,6 +138,8 @@ replace_with_bnb_linear(bnb_model)
 bnb_model = bnb_model.to(device)  # bnb layers quantize weights to int8 once moved to CUDA
 bnb_model.eval()
 
+torch.save(bnb_model.state_dict(), 'bnb_transformer_en_de.pt')
+
 
 def main():
 

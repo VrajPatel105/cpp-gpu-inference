@@ -3,11 +3,6 @@ import torch.nn as nn
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-calibration_data = torch.load('calibration_data.pt')
-running_max = calibration_data['running_max']
-outlier_dict = calibration_data['outlier_dict']
-
-
 
 class QuantizedLinear(nn.Module):
     def __init__(self, weight, bias, outlier_indices):

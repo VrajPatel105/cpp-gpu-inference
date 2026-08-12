@@ -7,6 +7,11 @@ from quantized_linear import QuantizedLinear
 from config import configurations
 from tokenizer import Tokenizer
 from train import translate, load_data
+import bitsandbytes as bnb
+import warnings
+warnings.filterwarnings("ignore")
+import logging
+logging.getLogger("bitsandbytes").setLevel(logging.ERROR)
 
 # 1. Load calibration data
 calibration_data = torch.load('/mnt/c/dev/projects/cpp-gpu-inference/6. Quantization/llm.int8()/calibration_data.pt')
@@ -100,6 +105,38 @@ def translate(model, sentence, eng_tok, de_tok, device, max_len):
             ids = ids[:-1]  # drop EOS if present
 
         return de_tok.decode_sentence(ids)
+    
+
+def replace_with_bnb_linear(module):
+    for name, child in module.named_children():
+        if isinstance(child, nn.Linear):
+            new_layer = bnb.nn.Linear8bitLt(
+                child.in_features,
+                child.out_features,
+                bias=child.bias is not None,
+                has_fp16_weights=False,   # store weights in int8, not fp16
+                threshold=6.0             # same outlier threshold concept as LLM.int8()
+            )
+            new_layer.weight = bnb.nn.Int8Params(
+                child.weight.data.clone(), requires_grad=False, has_fp16_weights=False
+            )
+            if child.bias is not None:
+                new_layer.bias = nn.Parameter(child.bias.data.clone())
+            setattr(module, name, new_layer)
+        else:
+            replace_with_bnb_linear(child)  # recurse into submodules
+
+# load bnb model
+bnb_model = build_transformer(configurations).to(device)
+bnb_checkpoint = torch.load(
+    '/mnt/c/dev/projects/cpp-gpu-inference/en-de-transformer/transformer_en_de.pt',
+    map_location=device
+)
+bnb_model.load_state_dict(bnb_checkpoint['model_state_dict'])
+
+replace_with_bnb_linear(bnb_model)
+bnb_model = bnb_model.to(device)  # bnb layers quantize weights to int8 once moved to CUDA
+bnb_model.eval()
 
 
 def main():
@@ -140,6 +177,8 @@ def main():
     max_len = configurations['max_len']
     for s in sentences:
         print(f"EN: {s}")
+        original_translation = quantized_translation = bnb_translation = None
+
         try:
             original_translation = translate(original_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
             print(f"  ORIGINAL : {original_translation}")
@@ -152,7 +191,13 @@ def main():
         except AssertionError as e:
             print(f"  QUANTIZED: skipped ({e})")
 
-        match = "MATCH" if original_translation == quantized_translation else "DIFFER"
+        try:
+            bnb_translation = translate(bnb_model, s, english_tokenizer, german_tokenizer, device, max_len=max_len)
+            print(f"  BNB: {bnb_translation}")
+        except AssertionError as e:
+            print(f"  BNB: skipped ({e})")
+
+        match = "MATCH" if original_translation == quantized_translation == bnb_translation else "DIFFER"
         print(f"  -> {match}\n")
 
 
@@ -164,76 +209,91 @@ if __name__ == "__main__":
 EN: I am hungry.
   ORIGINAL : ich habe hunger
   QUANTIZED: ich habe hunger
+  BNB: ich habe hunger
   -> MATCH
 
 EN: Hello.
   ORIGINAL : hallo
   QUANTIZED: hallo
+  BNB: hallo
   -> MATCH
 
 EN: I am tired.
   ORIGINAL : ich bin müde
   QUANTIZED: ich bin müde
+  BNB: ich bin müde
   -> MATCH
 
 EN: The book is on the table.
   ORIGINAL : das buch ist auf dem tisch
   QUANTIZED: das buch ist auf dem tisch
+  BNB: das buch ist auf dem tisch
   -> MATCH
 
 EN: She is my friend.
   ORIGINAL : sie ist mein freund
   QUANTIZED: sie ist mein freund
+  BNB: sie ist mein freund
   -> MATCH
 
 EN: What time is it?
   ORIGINAL : was ist es zeit
   QUANTIZED: was ist es zeit
+  BNB: was ist es zeit
   -> MATCH
 
 EN: I am happy.
   ORIGINAL : ich bin glücklich
   QUANTIZED: ich bin glücklich
+  BNB: ich bin glücklich
   -> MATCH
 
 EN: He is at home.
   ORIGINAL : er ist zu hause
   QUANTIZED: er ist zu hause
+  BNB: er ist zu hause
   -> MATCH
 
 EN: The dog is sleeping.
   ORIGINAL : der hund schläft
   QUANTIZED: der hund schläft
+  BNB: der hund schläft
   -> MATCH
 
 EN: This is my car.
   ORIGINAL : das ist mein auto
   QUANTIZED: das ist mein auto
+  BNB: das ist mein auto
   -> MATCH
 
 EN: I like coffee.
   ORIGINAL : ich mag kaffee
   QUANTIZED: ich mag kaffee
+  BNB: ich mag kaffee
   -> MATCH
 
 EN: They are students.
   ORIGINAL : sie sind studenten
   QUANTIZED: sie sind studenten
+  BNB: sie sind studenten
   -> MATCH
 
 EN: Where is the bathroom?
   ORIGINAL : wo ist der weg
   QUANTIZED: wo ist der weg
+  BNB: wo ist der weg
   -> MATCH
 
 EN: It is raining today.
   ORIGINAL : es regnet heute
   QUANTIZED: es regnet heute
+  BNB: es regnet heute
   -> MATCH
 
 EN: Please open the door.
   ORIGINAL : bitte öffnen sie die tür
   QUANTIZED: bitte öffnen sie die tür
+  BNB: bitte öffnen sie die tür
   -> MATCH
 
 """

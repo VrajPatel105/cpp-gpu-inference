@@ -1,38 +1,30 @@
 # cpp-gpu-inference
 
-This repo covers end to end cpp-gpu-inference.
+End-to-end GPU inference stack built from first principles: CUDA/Triton kernels,
+a from-scratch FlashAttention-2 implementation, and from-scratch INT8 quantization,
+each benchmarked against production baselines (cuBLAS, bitsandbytes).
 
-Topics that I have covered so far:
+## Results
 
-1. Cpp
-2. Coding Transformer from Scratch in Cpp
-3. Cuda
-   - This includes learning cuda
-   - PMPP book was used for this
-   - Basic cuda covered
-   - profiling intro covered
-   - optimizing the matrix multiplication by these techniques : 
-      - profiling
-      - tiling
-      - thread coarsening
-      - Corner Turning
-4. Triton Kernels
-   - matrix multilication
-   - vector addition
-   - softmax 
-   - sasha rush gpu puzzles
-5. Flash Attention
-   - Forward FA handtrace
-   - Backward FA handtrace
-   - Implementing both Forward and backward FA kernels
-   - FA-2 Implementation has been used
-   - Comparing FA-1 VS FA-2
-   - Finally, using torch Autograd function to make the kernels compatible in order to be able to port to custom transformer
+| Component | What was built | Result |
+|---|---|---|
+| Tiled + autotuned matmul (Triton) | Custom matmul kernel, autotuned over block size / warps / stages | Within 20% of cuBLAS across 512–4096; beats cuBLAS at 512; ~60% of theoretical FP32 peak at 2048 |
+| FlashAttention-2, forward + backward (Triton) | Full FA-2 kernel from scratch, wrapped in a custom `torch.autograd.Function`, integrated into a working transformer | ~95% of FP16 peak throughput at seq_len 8192 |
+| INT8 post-training quantization | Custom `QuantizedLinear` (vector-wise quantization + mixed-precision decomposition, LLM.int8()-style), applied model-wide | 15/15 identical translations vs. FP32 baseline; perplexity within 0.02%; static memory -46.4% (vs. -29.3% for bitsandbytes) |
 
-6. Quantization
-   - LLM.int8()
-   - SmoothQuant
-   - GPTQ
-   - AWQ
+## Repository structure
 
-7. 
+- `cpp-core/` — C++ systems programming fundamentals
+- `llm-c-study/` — LLM internals studied in C
+- `gpu-fundamentals-pmpp/` — CUDA fundamentals (PMPP book): memory coalescing, tiling, thread coarsening, occupancy; profiled with Nsight Compute/Systems
+- `triton-kernels/` — vector add, softmax, autotuned matmul in Triton
+- `flash-attention/` — hand-traced FA-1/FA-2 derivations and the from-scratch Triton kernel (forward + backward)
+- `quantization/` — custom INT8 PTQ built from scratch and benchmarked against bitsandbytes. SmoothQuant, GPTQ, and AWQ were studied but not yet implemented.
+- `en-de-transformer/` — **flagship project.** English-German transformer built from scratch, with the FlashAttention-2 and INT8 quantization above integrated end-to-end. See its own README.
+- `transformer-from-scratch-cpp/` — early C++ port, in progress
+
+## Background
+
+Built while working through PMPP, the FlashAttention-2 paper, and the LLM.int8() paper,
+implementing each technique from scratch rather than using existing libraries, then
+validating against production implementations (cuBLAS, bitsandbytes).

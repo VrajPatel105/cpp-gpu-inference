@@ -1,53 +1,33 @@
-# En-De Transformer + FlashAttention-2
+# en-de-transformer
 
-An English-German encoder-decoder Transformer, fused with a from-scratch
-FlashAttention-2 forward+backward kernel written in Triton.
+An English-to-German transformer built from scratch, extended with a from-scratch
+FlashAttention-2 implementation and from-scratch INT8 quantization — each component
+built independently, then integrated and benchmarked end-to-end.
 
-## Origin
+## What's here
 
-The base Transformer implementation (model architecture, training loop,
-custom dataset pipeline) is taken from my earlier project: link :  
-[Transformer-Implementation-from-scratch-with-custom-dataset](https://github.com/VrajPatel105/Transformer-Implementation-from-scratch-with-custom-dataset).
-
-This repo builds on that foundation by replacing the model's attention
-mechanism with a custom FlashAttention-2 Triton kernel, implemented and
-verified from scratch (see [`5. flash-attention`](../5.%20flash-attention) 
-in the parent repo  for the standalone kernel work, benchmarks, and derivation notes).
-
-## What's new here
-
-- FlashAttention-2 forward pass (Triton), verified against PyTorch's
-  `scaled_dot_product_attention` (causal and non-causal) within
-  floating-point tolerance
-- FlashAttention-2 backward pass (Triton), wrapped in a custom
-  `torch.autograd.Function` so it drops into standard PyTorch training
-- fp16 inputs with fp32 accumulation
-- `@triton.autotune`-tuned block sizes
-- Benchmarked against SDPA: throughput (TFLOPS, % of hardware peak) and
-  peak memory across sequence lengths 512–8192
+- Full encoder-decoder transformer, implemented from scratch in PyTorch, trained on
+  a 200,000-pair Tatoeba English-German dataset.
+- FlashAttention-2 forward and backward passes, implemented from scratch in Triton
+  and wrapped in a custom `torch.autograd.Function`, dropped in as the model's attention mechanism.
+- Custom INT8 post-training quantization (`QuantizedLinear`, LLM.int8()-style vector-wise
+  quantization + mixed-precision decomposition), applied model-wide with a calibration pass.
 
 ## Results
 
-| Metric | This kernel | PyTorch SDPA |
-|---|---|---|
-| Peak HW utilization (8192 tokens) | ~95% | — |
-| Peak memory (8192 tokens) | ~288 MB | ~288 MB |
-| Notes | Matches SDPA memory scaling; SDPA edges ahead on speed at long sequences via causal block-skipping (not yet implemented here) |
+FlashAttention-2 reaches ~95% of FP16 peak throughput at sequence length 8192.
 
-*(full benchmark table in [`5. flash-attention/flash_attention_fwd.py`](../5.%20flash-attention))*
+Quantization comparison (FP32 baseline vs. custom INT8 vs. bitsandbytes):
 
-## What stayed the same
+| Metric | FP32 | Custom INT8 | bitsandbytes |
+|---|---|---|---|
+| Translations identical to baseline | — | 15/15 | 15/15 |
+| Perplexity | 21.8669 | 21.8698 | 21.8653 |
+| Static memory footprint | baseline | -46.4% | -29.3% |
+| Peak inference memory | baseline | -5.4% | -8.9% |
 
-Model architecture, tokenization, dataset handling, and training loop
-are unchanged from the original project — only the attention mechanism
-inside multi-head attention was replaced.
+## Why from scratch
 
-## Status
-
-- [x] Forward pass
-- [x] Causal masking
-- [x] fp16 / fp32 accumulation
-- [x] Autotuning + benchmarking
-- [ ] Backward pass
-- [ ] Full training run with the integrated kernel
-- [ ] Nsight profiling
+Both FlashAttention-2 and the INT8 quantization scheme were implemented without
+reference to existing kernel libraries, then validated against production
+implementations to confirm correctness and competitive performance.

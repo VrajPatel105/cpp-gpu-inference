@@ -6,12 +6,14 @@ from model import build_transformer
 from quantized_linear import QuantizedLinear
 from config import configurations
 from tokenizer import Tokenizer
-from train import translate, load_data
+from train import translate, load_data, evaluate, TranslationDataset
 import bitsandbytes as bnb
 import warnings
 warnings.filterwarnings("ignore")
 import logging
 logging.getLogger("bitsandbytes").setLevel(logging.ERROR)
+import math 
+from torch.utils.data import random_split, DataLoader
 
 # 1. Load calibration data
 calibration_data = torch.load('/mnt/c/dev/projects/cpp-gpu-inference/6. Quantization/llm.int8()/calibration_data.pt')
@@ -107,15 +109,17 @@ def translate(model, sentence, eng_tok, de_tok, device, max_len):
         return de_tok.decode_sentence(ids)
     
 
-def replace_with_bnb_linear(module):
+def replace_with_bnb_linear(module, skip_names=("projection_layer",)):
     for name, child in module.named_children():
+        if name in skip_names:
+            continue  # leave this one as a regular nn.Linear
         if isinstance(child, nn.Linear):
             new_layer = bnb.nn.Linear8bitLt(
                 child.in_features,
                 child.out_features,
                 bias=child.bias is not None,
-                has_fp16_weights=False,   # store weights in int8, not fp16
-                threshold=6.0             # same outlier threshold concept as LLM.int8()
+                has_fp16_weights=False,
+                threshold=6.0
             )
             new_layer.weight = bnb.nn.Int8Params(
                 child.weight.data.clone(), requires_grad=False, has_fp16_weights=False
@@ -124,8 +128,8 @@ def replace_with_bnb_linear(module):
                 new_layer.bias = nn.Parameter(child.bias.data.clone())
             setattr(module, name, new_layer)
         else:
-            replace_with_bnb_linear(child)  # recurse into submodules
-
+            replace_with_bnb_linear(child, skip_names)
+            
 # load bnb model
 bnb_model = build_transformer(configurations).to(device)
 bnb_checkpoint = torch.load(
@@ -140,6 +144,27 @@ bnb_model.eval()
 
 torch.save(bnb_model.state_dict(), 'bnb_transformer_en_de.pt')
 
+
+def build_val_loader(english, german, eng_tok, de_tok, configurations):
+    max_len = configurations['max_len']
+    full_dataset = TranslationDataset(english, german, eng_tok, de_tok, max_len)
+
+    val_size = int(0.1 * len(full_dataset))
+    train_size = len(full_dataset) - val_size
+
+    train_dataset, val_dataset = random_split(
+        full_dataset, [train_size, val_size],
+        generator=torch.Generator().manual_seed(42)   # same seed as train.py
+    )
+
+    val_loader = DataLoader(val_dataset, batch_size=configurations['batch_size'], shuffle=False)
+    return val_loader
+
+
+def compute_perplexity(model, val_loader, criterion, device, pad_id):
+    avg_loss = evaluate(model, val_loader, criterion, device, pad_id)
+    perplexity = math.exp(avg_loss)
+    return perplexity
 
 def main():
 
@@ -157,6 +182,9 @@ def main():
     )
     original_model.load_state_dict(original_checkpoint['model_state_dict'])
     original_model.eval()
+
+    val_loader = build_val_loader(english, german, english_tokenizer, german_tokenizer, configurations)
+    criterion = nn.CrossEntropyLoss(ignore_index=german_tokenizer.PAD_ID)
 
     sentences = [
         "I am hungry.",
@@ -201,6 +229,21 @@ def main():
 
         match = "MATCH" if original_translation == quantized_translation == bnb_translation else "DIFFER"
         print(f"  -> {match}\n")
+
+    perplexities = {}
+    perplexities['original'] = compute_perplexity(original_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
+    perplexities['quantized'] = compute_perplexity(quantized_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
+    perplexities['bnb'] = compute_perplexity(bnb_model, val_loader, criterion, device, german_tokenizer.PAD_ID)
+
+    
+# --- Perplexity Comparison ---
+# ORIGINAL  : 21.8669
+# QUANTIZED : 21.8698
+# BNB       : 21.8653
+
+    print("\n--- Perplexity Comparison ---")
+    for name, ppl in perplexities.items():
+        print(f"{name.upper():10s}: {ppl:.4f}")
 
 
 if __name__ == "__main__":

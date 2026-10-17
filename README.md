@@ -7,7 +7,7 @@ each benchmarked against the production library it replaces (cuBLAS, PyTorch SDP
 Full writeup with every table, the hardware each number was measured on, and the places my
 implementation loses: [Building a GPU inference stack from scratch](https://vrajpatel105.github.io/gpu-inference/index.html)
 
-## Results
+## Results - As of 10/16/26, The new benchmark results will be updated since i got my new laptop with RTX 5080 and the existing benchmarks are on 4070
 
 | Component | What was built | Result |
 |---|---|---|

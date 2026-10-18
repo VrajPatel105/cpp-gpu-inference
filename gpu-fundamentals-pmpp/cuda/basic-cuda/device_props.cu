@@ -25,22 +25,13 @@ int main() {
     return 0;
 }
 
-// Device name: NVIDIA GeForce RTX 4070 Laptop GPU
-// Global memory: 8187 MB
+
+// New  stats since i got new device : ) 
+// Device name: NVIDIA GeForce RTX 5080 Laptop GPU
+// Global memory: 16302 MB
 // Shared memory per block: 49152 bytes
 // Registers per block: 65536
 // Warp size: 32
 // Max threads per block: 1024
 // Max threads dim: 1024, 1024, 64
 // Max grid size: 2147483647, 65535, 65535
-
-
-// New  stats since i got new device : ) 
-Device name: NVIDIA GeForce RTX 5080 Laptop GPU
-Global memory: 16302 MB
-Shared memory per block: 49152 bytes
-Registers per block: 65536
-Warp size: 32
-Max threads per block: 1024
-Max threads dim: 1024, 1024, 64
-Max grid size: 2147483647, 65535, 65535

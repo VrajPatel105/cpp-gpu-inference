@@ -84,13 +84,13 @@ int main(){
 
 // output : 
 // Prior to the addition : 
-// 789 311
-// 226 409
-// 406 561
-// 189 400
-// 429 452
-// Addition for elements at index 0 : 1100
-// Addition for elements at index 1 : 635
-// Addition for elements at index 2 : 967
-// Addition for elements at index 3 : 589
-// Addition for elements at index 4 : 881
+// 316 374
+// 250 250
+// 314 597
+// 311 59
+// 194 893
+// Addition for elements at index 0 : 690
+// Addition for elements at index 1 : 500
+// Addition for elements at index 2 : 911
+// Addition for elements at index 3 : 370
+// Addition for elements at index 4 : 1087

@@ -80,7 +80,7 @@ int main(){
         cout << h_C[i] << endl;
     }
 
-    // writing a manual loop in order to verify the output
+    // writing a manual loop in order to verify the output in 2d
     for(int i = 0; i < N; i++){
         for(int j = 0; j < N; j++){
             cout << h_C[i*N + j] << "\t";
@@ -114,3 +114,7 @@ int main(){
 // 484
 // 542
 // 600
+// 90      100     110     120
+// 202     228     254     280
+// 314     356     398     440
+// 426     484     542     600

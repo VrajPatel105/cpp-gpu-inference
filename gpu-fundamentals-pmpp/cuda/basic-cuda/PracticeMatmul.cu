@@ -12,10 +12,18 @@ __global__ void practiceMatmulKernel(float *A, float *B, float *C, int N){
     if(row < N && col < N){
         float sum = 0.0f;
         for(int k = 0; k<N; k++){
+            // [1,2,3] * [1]
+            //           [2]
+            //           [3]       
+            // == mat[x]
+            // 1*1 + 2*2 + 3*3 = mat[x] = 1 + 4 + 9 = 14
+
             sum += A[row * N + k] * B[k * N + col];
         }
-    }
+        
+        C[row * N + col] = sum;
 
+    }
 }
 
 
@@ -46,4 +54,20 @@ int main(){
         cout << h_C[i] << endl;
     }
 
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+    
+    return 0;
 }
+
+// output 
+// 30
+// 36
+// 42
+// 66
+// 81
+// 96
+// 102
+// 126
+// 150
